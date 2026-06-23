@@ -41,6 +41,8 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | D7 | 账号合并 | P0 邮箱与微信视为独立账号；手动「绑定账号」→ P2 |
 | D8 | 通知 | P0 站内通知列表；推送 / 微信模板消息 → P2 |
 | D9 | 容量已满 | P0 直接阻止报名；候补队列（waitlist）→ P1 |
+| D10 | 收件箱（统一待办） | P0 统一收件箱，集中处理活动邀请、好友申请、群组邀请等「待我处理」事项。被邀请进入 `invited` 待回应状态；批阅时一次交互完成报名 + 是否加入日历 |
+| D11 | 报名联动日历 | 报名 going/maybe 时默认勾选「加入我的日历（busy_only）」，用户可取消勾选并当场切换可见性 |
 
 ---
 
@@ -58,9 +60,11 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
    - 唯一分享链接（slug）+ OG meta 标签
    - 取消活动（仅发起人；群活动发起人或群主）
 3. **RSVP（报名）**
-   - going / not_going / maybe
-   - 报名 `going`（或 `maybe`）→ 自动在个人日程创建关联日程（默认 `busy_only`）
-   - 取消报名 / 改为 not_going → 自动删除对应日程
+   - 状态：`invited`（被邀请未回应）/ `going` / `not_going` / `maybe`
+   - 自己点链接进来报名（source=self）直接进入 going/maybe/not_going
+   - 被邀请（source=invited）先进入 `invited` 待回应，落入收件箱
+   - 报名 `going`/`maybe` 时默认勾选「加入我的日历（busy_only）」，可取消勾选、当场切可见性
+   - 勾选后 → 自动 upsert 关联日程；取消报名 / 改 not_going / 取消勾选 → 删除对应日程
    - 容量已满阻止新的 going
 4. **个人日程**
    - 手动创建/编辑/删除个人日程（独立于活动）
@@ -78,8 +82,15 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
    - 创建群 / 邀请加入 / 退群
    - 群成员列表
    - 任一群成员可在群内发起活动
-8. **通知（站内）**
-   - 好友申请、活动邀请、活动变更/取消的站内通知列表 + 未读计数
+8. **统一收件箱（待办中心）**
+   - 集中展示「待我处理」事项：活动邀请（invited）、好友申请、群组邀请
+   - 活动邀请行内批阅：报名 / 待定 / 不参加 + 「加入日历」勾选（默认勾选）+ 可见性切换
+   - 时间冲突提示：邀请活动与已有日程撞车时标红
+   - 好友申请 / 群组邀请：行内同意 / 拒绝
+   - 已处理项移出待办区（灰显或归档）；未读计数
+9. **通知（提醒入口）**
+   - 站内通知列表（好友申请、活动邀请、活动变更/取消）+ 未读计数
+   - 职责区分：通知=提醒触点（红点/未来推送），收件箱=待办处理
 
 ### P1 — 增强
 - 真实微信 OAuth 登录
@@ -88,7 +99,6 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 - 查看好友日程（按可见性过滤）
 - 容量候补队列（waitlist），有人退出自动递补
 - 活动评论/留言
-- 群活动详情显示「谁还没回应」（invited 但未 RSVP）
 - 活动编辑（已存在的字段修改 + 变更通知参与者）
 - 周视图 / 日视图
 - 群主转让
@@ -175,9 +185,12 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 |------|------|------|
 | event_id | uint, FK→events | |
 | user_id | uint, FK→users | |
-| rsvp | string | `going` / `not_going` / `maybe` |
+| rsvp | string | `invited`（被邀请未回应）/ `going` / `not_going` / `maybe` |
 | source | string | `self`（自己点进来）/ `invited`（被邀请） |
+| add_to_calendar | bool | 报名时是否联动生成日程（默认 true） |
 | 唯一约束 | (event_id, user_id) | |
+
+> **收件箱来源**：`rsvp=invited` 的参与记录即「待回应活动邀请」。发起人据此查看「谁还没回应」（P0 即可用）。
 
 ### 4.8 schedules（个人日程）
 | 字段 | 类型 | 说明 |
@@ -192,15 +205,27 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | event_id | uint, FK→events, nullable | source=event 时关联活动 |
 | 唯一约束 | (user_id, event_id) where source=event | 防止重复生成 |
 
-> **联动规则**：RSVP=going/maybe → upsert 一条 source=event 的 schedule（默认 busy_only）；RSVP 改为 not_going 或取消 → 删除该 schedule。用户手动改过的可见性需保留（upsert 时不覆盖用户已改的 visibility）。
+> **联动规则**：仅当参与记录 `rsvp ∈ {going, maybe}` 且 `add_to_calendar=true` 时，upsert 一条 source=event 的 schedule（默认 busy_only）；当 rsvp 改为 not_going/取消报名，或 add_to_calendar=false 时，删除该 schedule。用户手动改过的可见性需保留（upsert 时不覆盖用户已改的 visibility）。
 
-### 4.9 notifications
+### 4.9 group_invites
+群组邀请，进入收件箱供被邀请人批阅（区别于用邀请码自助加入）。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| group_id | uint, FK→groups | |
+| inviter_id | uint, FK→users | 邀请人 |
+| invitee_id | uint, FK→users | 被邀请人 |
+| status | string | `pending` / `accepted` / `rejected` |
+| 唯一约束 | (group_id, invitee_id) | |
+
+### 4.10 notifications
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | user_id | uint, FK→users | 接收者 |
-| type | string | `friend_request` / `friend_accepted` / `event_invite` / `event_changed` / `event_cancelled` |
+| type | string | `friend_request` / `friend_accepted` / `event_invite` / `event_changed` / `event_cancelled` / `group_invite` |
 | payload | jsonb/text | 关联实体 id 与展示数据 |
 | read_at | datetime, nullable | 已读时间 |
+
+> **收件箱 vs 通知**：收件箱是「待办视图」，由可处理的源数据动态聚合 —— `event_participants(rsvp=invited)` + `friendships(status=pending, addressee=本人)` + `group_invites(status=pending, invitee=本人)`。notifications 是「提醒流」，承载红点/未读与未来推送。两者各自独立，不互相依赖。
 
 ---
 
@@ -246,6 +271,9 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | PATCH | /api/groups/:id | 改群名/简介（群主） |
 | DELETE | /api/groups/:id | 解散群（群主） |
 | POST | /api/groups/:id/members | 通过邀请码加入 |
+| POST | /api/groups/:id/invites | 邀请用户入群 `{user_ids}`（进收件箱） |
+| POST | /api/groups/invites/:id/accept | 同意入群邀请 |
+| POST | /api/groups/invites/:id/reject | 拒绝入群邀请 |
 | DELETE | /api/groups/:id/members/:userId | 退群 / 移除成员 |
 | GET | /api/groups/:id/events | 群活动列表 |
 
@@ -256,7 +284,7 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | GET | /api/events/:slug | 活动详情（含参与者汇总） | 否（只读可匿名） |
 | PATCH | /api/events/:id | 编辑活动（发起人，P1） | 是 |
 | POST | /api/events/:id/cancel | 取消活动 | 是 |
-| POST | /api/events/:id/rsvp | 报名/改状态 `{rsvp}` | 是 |
+| POST | /api/events/:id/rsvp | 报名/改状态 `{rsvp, add_to_calendar?, visibility?}` | 是 |
 | DELETE | /api/events/:id/rsvp | 取消报名 | 是 |
 | POST | /api/events/:id/invite | 邀请好友 `{user_ids}` | 是 |
 | GET | /api/events/mine | 我发起/参与的活动 | 是 |
@@ -274,14 +302,21 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 |------|------|------|
 | GET | /api/calendar?from=&to=&filter= | 聚合月视图数据：我的日程 + 群活动 +（P1）好友。`filter`=all/groups/friends |
 
-### 5.8 通知 Notifications
+### 5.8 收件箱 Inbox（统一待办）
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | /api/inbox | 聚合待办：活动邀请(invited) + 好友申请(pending) + 群组邀请(pending) + 各类计数 |
+
+> 收件箱本身不新增写操作；批阅动作复用各域已有端点（`/events/:id/rsvp`、`/friends/requests/:id/accept|reject`、`/groups/invites/:id/accept|reject`）。
+
+### 5.9 通知 Notifications
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /api/notifications | 通知列表 + 未读数 |
 | POST | /api/notifications/:id/read | 标记已读 |
 | POST | /api/notifications/read-all | 全部已读 |
 
-### 5.9 分享 OG 卡片
+### 5.10 分享 OG 卡片
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /e/:slug | 服务端渲染含 OG/Twitter meta 的 HTML（标题、时间、报名人数），随后 hydrate 到前端详情页 |
@@ -296,14 +331,15 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 |------|------|---------|
 | 启动/登录 | `/login` | 邮箱登录、邮箱注册切换、Mock 微信一键登录（开发态多身份切换） |
 | 日历（首页） | `/` | 月视图 + 标记点 + 颜色图例；点日期展开当天事件抽屉；筛选 全部/我的群/好友（P1）；右下角「+」创建活动/日程 |
-| 活动详情 | `/e/:slug` | 封面/类型色块、时间地点、报名人数与头像墙、RSVP 三态按钮、邀请好友、分享按钮（复制链接/微信）；未登录显示只读 + 登录后报名引导；满员禁用 going |
+| 活动详情 | `/e/:slug` | 封面/类型色块、时间地点、报名人数与头像墙、RSVP 三态按钮 +「加入日历」勾选与可见性、邀请好友、分享按钮（复制链接/微信）；未登录显示只读 + 登录后报名引导；满员禁用 going；发起人可见「未回应」名单 |
 | 创建活动 | `/events/new` | 选发起范围（个人/群）、标题、类型选择器、时间选择、地点、人数上限；提交后跳详情并弹分享 |
 | 我的活动 | `/events` | 我发起/参与，分「即将开始 / 已过期」 |
 | 创建/编辑日程 | `/schedules/new`、`/schedules/:id` | 标题、时间、地点、可见性选择（public/busy_only/private 带说明） |
-| 好友 | `/friends` | 好友列表、申请红点、搜索加好友、同意/拒绝；进入好友日程（P1） |
-| 群组列表 | `/groups` | 我的群、创建群、通过邀请码加入 |
-| 群详情 | `/groups/:id` | 成员列表、群活动列表、群内发起活动、退群/解散/复制邀请码 |
-| 通知 | `/notifications` | 通知流、未读高亮、点击跳转对应实体 |
+| 收件箱（待办） | `/inbox` | 统一处理活动邀请、好友申请、群组邀请；活动邀请行内批阅（报名/待定/不参加 + 加入日历勾选 + 可见性 + 时间冲突标红）；好友/群邀请行内同意/拒绝；已处理项灰显/归档；底部 Tab 带未读红点 |
+| 好友 | `/friends` | 好友列表、搜索加好友、发起申请；（待处理的好友申请统一在收件箱） |
+| 群组列表 | `/groups` | 我的群、创建群、通过邀请码加入、邀请好友入群 |
+| 群详情 | `/groups/:id` | 成员列表、群活动列表、群内发起活动、邀请入群、退群/解散/复制邀请码 |
+| 通知 | `/notifications` | 通知流、未读高亮、点击跳转对应实体或收件箱 |
 | 个人中心 | `/me` | 资料编辑、登出、注销账号 |
 
 ---
@@ -319,6 +355,10 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | 群主退群 | 若有其他成员，需先转让群主（P1）；否则自动解散 |
 | 账号注销 | 软删除，display_name 显示「已注销用户」；个人发起的活动取消、群活动保留归属群；好友关系移除；个人日程清除 |
 | 重复报名 | (event,user) 唯一约束 + upsert，幂等 |
+| 邀请已是参与者 | 已 RSVP（going/maybe/not_going）的用户再被邀请：不回退为 invited，幂等忽略 |
+| 邀请未注册用户 | P0 仅支持邀请站内好友/群成员（已注册）；外部仅靠分享链接 |
+| 收件箱已处理项 | 源状态非待办（rsvp≠invited、申请非 pending）即移出待办区，避免重复处理 |
+| 邀请活动已取消/过期 | 收件箱中的对应邀请置灰只读，不可再报名 |
 | 自动日程可见性 | 用户手动改过后，后续报名联动 upsert 不覆盖用户设定 |
 | 匿名访问详情 | 可只读；点 RSVP 时引导登录，登录后回到原活动 |
 | 微信内打开 | 微信屏蔽自定义 OG → 走默认抓取；P1 用 JS-SDK 优化卡片 |
@@ -343,11 +383,11 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 1. **项目骨架**：Go+Gin 工程结构、GORM 连接、migration；React+Vite+Tailwind+shadcn 脚手架；前后端联调跑通 `/api/health`。
 2. **认证（P0）**：users + auth_providers，邮箱注册/登录、Mock 微信登录、JWT Cookie 中间件、`/me`。
 3. **活动 + 分享（P0）**：events 表、创建/详情、share_slug、`/e/:slug` OG meta、匿名只读详情页。
-4. **RSVP + 自动日程（P0，核心闭环）**：event_participants、三态 RSVP、schedules 表与联动 upsert/删除、满员阻止。
+4. **RSVP + 自动日程（P0，核心闭环）**：event_participants（含 invited 状态、add_to_calendar）、报名批阅、schedules 表与联动 upsert/删除、满员阻止。
 5. **个人日程 + 日历月视图（P0）**：手动日程 CRUD、可见性、`/api/calendar` 聚合、月视图 UI + 颜色编码。
-6. **好友（P0）**：friendships、申请/同意/拒绝、好友列表、点对点邀请。
-7. **群组（P0）**：groups/group_members、创建/加入/退群、群内发起活动、群活动列表。
-8. **通知（P0）**：notifications，关键事件触发（好友申请、邀请、变更/取消）+ 未读计数。
+6. **好友（P0）**：friendships、申请/同意/拒绝、好友列表、点对点邀请（生成 invited）。
+7. **群组（P0）**：groups/group_members/group_invites、创建/加入/退群/邀请入群、群内发起活动、群活动列表。
+8. **统一收件箱 + 通知（P0）**：`/api/inbox` 聚合活动邀请/好友申请/群组邀请，行内批阅；notifications 提醒流与未读计数。
 9. **打磨**：Luma 风格视觉细化、空状态、加载态、移动端适配回归。
 10. **P1 起步**：真实微信 OAuth、好友日程查看、日历筛选、JS-SDK 分享卡片。
 
