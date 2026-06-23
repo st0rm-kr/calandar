@@ -1,0 +1,66 @@
+web/src/lib/api.test.ts
+  s_96b9a89cd24bc7::t_0248eae87e3ca7 31-32 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3a697febb4e182995b9dd4","tool_type":"builtin","tool_id":"icube:applyChatSnapshotPatch","line_ranges":[{"Range":[31,32]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fe9ce259bb210c25e4d7afc86a7c209499fe0c3b",
+  "prompts": {},
+  "sessions": {
+    "s_96b9a89cd24bc7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3a4463ebb4e182995b9911",
+        "model": "openrouter-3o"
+      },
+      "human_author": "kr <963689810@qq.com>"
+    }
+  },
+  "attestation_metadata": {
+    "web/src/lib/api.test.ts": [
+      {
+        "hash": "s_96b9a89cd24bc7::t_0248eae87e3ca7",
+        "line_ranges": [
+          {
+            "Range": [
+              31,
+              32
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3a697febb4e182995b9dd4",
+            "tool_type": "builtin",
+            "tool_id": "icube:applyChatSnapshotPatch",
+            "line_ranges": [
+              {
+                "Range": [
+                  31,
+                  32
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_96b9a89cd24bc7": {
+      "tool": "trae",
+      "conversation_id": "6a3a4463ebb4e182995b9911",
+      "session_id": "6a3a4463ebb4e182995b9911",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_96b9a89cd24bc7::t_0248eae87e3ca7": {
+      "tool": "trae",
+      "conversation_id": "6a3a4463ebb4e182995b9911",
+      "session_id": "6a3a4463ebb4e182995b9911",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
