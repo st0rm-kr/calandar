@@ -49,6 +49,56 @@ func TestRequireUserRejectsInvalidBearerToken(t *testing.T) {
 	}
 }
 
+func TestRequireUserRejectsTokensWithMissingOrInvalidRequiredClaims(t *testing.T) {
+	sub := "d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8"
+	tests := []struct {
+		name   string
+		claims map[string]any
+	}{
+		{
+			name: "missing audience",
+			claims: map[string]any{
+				"sub": sub,
+				"exp": time.Now().Add(time.Hour).Unix(),
+			},
+		},
+		{
+			name: "wrong audience",
+			claims: map[string]any{
+				"sub": sub,
+				"aud": "anonymous",
+				"exp": time.Now().Add(time.Hour).Unix(),
+			},
+		},
+		{
+			name: "missing expiration",
+			claims: map[string]any{
+				"sub": sub,
+				"aud": "authenticated",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := testRouter()
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			req.Header.Set("Authorization", "Bearer "+signHS256JWT(t, testJWTSecret, tt.claims))
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("expected status 401, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+			const want = `{"data":null,"error":{"code":"unauthorized","message":"invalid bearer token"}}`
+			if strings.TrimSpace(rec.Body.String()) != want {
+				t.Fatalf("unexpected body: %s", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestRequireUserStoresValidTokenSubjectInRequestContext(t *testing.T) {
 	router := testRouter()
 	sub := "d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8"

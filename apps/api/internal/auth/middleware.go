@@ -27,7 +27,7 @@ func RequireUser(jwtSecret string) gin.HandlerFunc {
 		claims := jwt.MapClaims{}
 		token, err := jwt.ParseWithClaims(tokenText, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		}, jwt.WithValidMethods([]string{"HS256"}))
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithAudience("authenticated"), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"data": nil, "error": gin.H{"code": "unauthorized", "message": "invalid bearer token"}})
 			c.Abort()
