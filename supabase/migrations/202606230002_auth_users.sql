@@ -9,6 +9,8 @@ create table public.users (
   deleted_at timestamptz
 );
 
+alter table public.users enable row level security;
+
 create index users_email_idx on public.users (lower(email)) where deleted_at is null;
 create index users_display_name_idx on public.users (lower(display_name)) where deleted_at is null;
 

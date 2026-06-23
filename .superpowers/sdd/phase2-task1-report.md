@@ -8,6 +8,7 @@ Executed `.superpowers/sdd/phase2-task1-brief.md`: add the Supabase profile tabl
 
 - Added `supabase/migrations/202606230002_auth_users.sql`.
 - Created `public.users` with auth user cascade delete, profile fields, status check, timestamps, and soft-delete marker.
+- Enabled row level security on `public.users`.
 - Added partial indexes for active `email` and `display_name` lookups.
 - Added `public.handle_new_auth_user()` as a `security definer` trigger function.
 - Added `on_auth_user_created` trigger on `auth.users` after insert.
@@ -65,7 +66,31 @@ Result row:
 }
 ```
 
+Ran RLS and policy check:
+
+```sql
+select
+  c.relrowsecurity as users_rls_enabled,
+  count(p.polname)::int as users_policy_count
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+left join pg_policy p on p.polrelid = c.oid
+where n.nspname = 'public'
+  and c.relname = 'users'
+group by c.relrowsecurity;
+```
+
+Result row:
+
+```json
+{
+  "users_rls_enabled": true,
+  "users_policy_count": 0
+}
+```
+
 ## Notes
 
 - Supabase reported `WARN: no files matched pattern: supabase/seed.sql`; this did not fail the reset.
-- Supabase advisory reported RLS disabled for `public.schema_migrations_marker` and `public.users`. The brief did not request RLS policies, so no RLS change was applied in this task.
+- No business policy was added for `public.users`, so client access remains denied by default until explicit policies are designed.
+- Supabase advisory still reports RLS disabled for `public.schema_migrations_marker`; this task only changed `public.users`.
