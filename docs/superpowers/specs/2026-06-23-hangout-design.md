@@ -6,6 +6,8 @@
 - **暂定名**: Hangout
 - **一句话定位**: 面向熟人圈子的社交日历与活动协调 Web 应用，灵感来自飞书日历，UI 风格对标 Luma。
 
+> **变更记录（2026-06-23 架构修订）**：认证改为 Supabase Auth 托管；保留 Gin 后端承载核心业务逻辑，Gin 仅验签 JWT。因开发者为个人主体（无法注册微信开放平台网站应用、无法完成微信认证），**微信相关功能全部移除**（Mock 微信登录、真实微信 OAuth、JS-SDK 自定义分享卡片）。部署策略更新为：**前后端同机部署在香港阿里云 ECS**，Cloudflare 仅负责 DNS 解析，默认不开代理；正式域名上线前允许使用 ECS 公网 IP 做小范围内测。数据库/Auth 仍采用阿里云 Supabase，最终地域以上线前实测延迟为准。受影响章节：D1、D2、第 3 节、第 4 节、5.1、第 6/7/9/10 节、第 8 节。
+
 ---
 
 ## 1. 背景与目标
@@ -32,18 +34,19 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 | # | 议题 | 决策 |
 |---|------|------|
-| D1 | 微信登录 | 邮箱+密码为 P0；微信 OAuth 写入数据模型，但 P0 用 **Mock 微信登录**（假 openid/昵称/头像，接口与真实一致），真实 OAuth → P1 |
-| D2 | 分享卡片 | 标准 OG / Twitter meta（P0），浏览器/多数平台显示卡片；微信内自定义卡片用 JS-SDK → P1 |
+| D1 | 认证方式 | **Supabase Auth 托管**：邮箱+密码注册/登录/重置密码为 P0；前端直连 Supabase 完成认证，Gin 后端仅**验签** Supabase 签发的 JWT。微信登录因个人主体限制移除（见变更记录） |
+| D2 | 分享卡片 | P0 提供标准 OG / Twitter meta，浏览器与多数平台可正常抓取。**微信内展示效果不做保证**：可能显示默认链接预览、普通链接或风险提示页；微信内自定义卡片（JS-SDK）需企业主体 + 微信认证，已移除 |
 | D3 | RSVP 状态 | 三态：`going` / `not_going` / `maybe`；`maybe` 在日历显示为暂定忙 |
 | D4 | MVP 首切片 | 核心闭环优先：活动 + 分享 + RSVP + 自动日程 |
 | D5 | 匿名访问 | 未登录可**查看**活动详情（只读），**报名**需登录 |
 | D6 | 群活动可见性 | 仅链接 / 群内可见（隐私优先） |
-| D7 | 账号合并 | P0 邮箱与微信视为独立账号；手动「绑定账号」→ P2 |
-| D8 | 通知 | P0 站内通知列表；推送 / 微信模板消息 → P2 |
+| D7 | 账号合并 | P0 仅邮箱单一登录方式，无需账号合并；多登录方式绑定/合并待引入第三方登录后再议 → P2 |
+| D8 | 通知 | P0 站内通知列表；Web Push 推送 → P2 |
 | D9 | 容量已满 | P0 直接阻止报名；候补队列（waitlist）→ P1 |
 | D10 | 收件箱（统一待办） | P0 统一收件箱，集中处理活动邀请、好友申请、群组邀请等「待我处理」事项。被邀请进入 `invited` 待回应状态；批阅时一次交互完成报名 + 是否加入日历 |
 | D11 | 报名联动日历 | 报名 going/maybe 时默认勾选「加入我的日历（busy_only）」，用户可取消勾选并当场切换可见性 |
 | D12 | 日程冲突 | 软提示策略：允许时间重叠的多条日程并存，系统只检测并提示冲突（报名/建日程时 + 日历标记），不阻止 |
+| D13 | 数据库环境 | **统一使用 PostgreSQL**：开发/测试使用 Supabase local，生产使用阿里云 Supabase Postgres；不使用 SQLite 作为开发替代，避免 uuid、jsonb、trigger、partial index 等能力差异导致迁移风险 |
 
 ---
 
@@ -51,14 +54,14 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 ### P0 — MVP（核心闭环可用）
 1. **认证**
-   - 邮箱+密码注册/登录/登出
-   - Mock 微信登录（生成假 openid/昵称/头像，可一键切换多个测试身份）
-   - JWT 存于 HttpOnly Cookie；鉴权中间件
+   - 邮箱+密码注册/登录/登出（Supabase Auth 托管）
+   - 邮箱重置密码（Supabase 邮件服务）
+   - 前端直连 Supabase 完成认证拿到 JWT；Gin 鉴权中间件**验签** Supabase JWT（HS256，用 project JWT secret 或 JWKS），不自行签发
 2. **活动**
    - 创建活动（个人发起 / 群发起）
    - 字段：标题、类型（攀岩/吃饭/出行/游戏/其他）、开始时间、结束时间、地点、人数上限（可选）
    - 活动详情页（未登录可只读查看）
-   - 唯一分享链接（slug）+ OG meta 标签
+   - 唯一分享链接（slug）+ 标准 OG meta 标签（微信内展示不做保证）
    - 取消活动（仅发起人；群活动发起人或群主）
 3. **RSVP（报名）**
    - 状态：`invited`（被邀请未回应）/ `going` / `not_going` / `maybe`
@@ -95,8 +98,6 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
    - 职责区分：通知=提醒触点（红点/未来推送），收件箱=待办处理
 
 ### P1 — 增强
-- 真实微信 OAuth 登录
-- 微信 JS-SDK 自定义分享卡片
 - 日历筛选：全部 / 我的群 / 好友
 - 查看好友日程（按可见性过滤）
 - 容量候补队列（waitlist），有人退出自动递补
@@ -106,69 +107,65 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 - 群主转让
 
 ### P2 — 锦上添花
-- 账号绑定/合并（邮箱 ↔ 微信）
-- 微信模板消息 / Web Push 推送
+- Web Push 推送
 - 推荐时段（找朋友共同有空的时间）
 - 活动复盘/相册
 - 重复活动（周期性日程）
 - 日历订阅（iCal 导出）
 - 数据统计面板
 
+> 注：微信生态相关能力（OAuth 登录、JS-SDK 自定义分享卡片、模板消息、账号绑定/合并）需企业主体 + 微信认证，当前个人主体阶段不纳入规划；将来注册公司主体后再评估引入。
+
 ---
 
 ## 4. 数据模型设计
 
-> ORM: GORM。所有表含 `id (uint, PK)`、`created_at`、`updated_at`、`deleted_at (软删除, gorm.DeletedAt)`，下文不再重复列出。时间统一 UTC 存储，前端按 Asia/Shanghai 展示。
+> ORM: GORM。除 `users` 外，所有表含 `id (uint, PK)`、`created_at`、`updated_at`、`deleted_at (软删除, gorm.DeletedAt)`，下文不再重复列出。**`users.id` 为 `uuid`，与 Supabase `auth.users.id` 对齐**；因此所有指向用户的外键（`*→users`，即下文各 `user_id`/`owner_id`/`requester_id`/`addressee_id`/`inviter_id`/`invitee_id`）类型均为 `uuid`。时间统一 UTC 存储，前端按 Asia/Shanghai 展示。
+>
+> **认证与用户表关系**：用户的认证凭据（邮箱、密码、第三方身份）由 Supabase Auth 在 `auth` schema（`auth.users` / `auth.identities`）托管，应用不自建认证表。本表 `public.users` 是业务侧用户档案（profile），`id` 外键引用 `auth.users.id`；用户在 Supabase 注册成功后，通过数据库 trigger（`on auth.users insert`）自动 upsert 一条 `public.users` 记录。
 
-### 4.1 users
+### 4.1 users（业务档案 / profile）
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| id | uuid, PK | 等于 Supabase `auth.users.id`（外键引用） |
 | display_name | string | 昵称 |
 | avatar_url | string | 头像 URL（可空） |
-| email | string, unique, nullable | 邮箱（邮箱注册时有） |
-| password_hash | string, nullable | bcrypt 哈希（邮箱注册时有） |
+| email | string, nullable | 邮箱副本（展示/搜索用，权威值在 `auth.users`） |
 | status | string | `active` / `deactivated`（注销后显示「已注销用户」） |
 
-### 4.2 auth_providers
-统一账户体系的关键表，一个 user 可挂多个登录方式。
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| user_id | uint, FK→users | |
-| provider | string | `email` / `wechat` / `wechat_mock` |
-| provider_uid | string | 微信为 openid；email 为邮箱 |
-| 唯一约束 | (provider, provider_uid) | 防重复绑定 |
+> 密码、邮箱验证、第三方身份由 Supabase Auth 托管，本表不存 `password_hash`。
 
-### 4.3 friendships
+### 4.2 friendships
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| requester_id | uint, FK→users | 申请方 |
-| addressee_id | uint, FK→users | 被申请方 |
+| requester_id | uuid, FK→users | 申请方 |
+| addressee_id | uuid, FK→users | 被申请方 |
 | status | string | `pending` / `accepted` / `rejected` |
 | 唯一约束 | (requester_id, addressee_id) | |
 
 > 查询「是否好友」：存在一条 `accepted` 且 {requester,addressee} 命中该用户对（无序）。
 
-### 4.4 groups
+### 4.3 groups
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | name | string | 群名 |
 | description | string | 群简介（可空） |
-| owner_id | uint, FK→users | 群主 |
+| owner_id | uuid, FK→users | 群主 |
 | invite_code | string, unique | 群邀请码（用于邀请链接） |
 | status | string | `active` / `dissolved` |
 
-### 4.5 group_members
+### 4.4 group_members
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | group_id | uint, FK→groups | |
-| user_id | uint, FK→users | |
+| user_id | uuid, FK→users | |
 | role | string | `owner` / `member` |
 | 唯一约束 | (group_id, user_id) | |
 
-### 4.6 events
+### 4.5 events
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| owner_id | uint, FK→users | 发起人 |
+| owner_id | uuid, FK→users | 发起人 |
 | scope | string | `personal`（点对点好友邀请）/ `group`（群活动） |
 | group_id | uint, FK→groups, nullable | scope=group 时有值 |
 | title | string | 标题 |
@@ -182,11 +179,11 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 > **过期处理**：读取时若 `end_at`（无则 `start_at`）已过且状态非 cancelled，视为 `expired`（只读）。可选每日定时任务把过期活动状态落库为 `expired`。
 
-### 4.7 event_participants
+### 4.6 event_participants
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | event_id | uint, FK→events | |
-| user_id | uint, FK→users | |
+| user_id | uuid, FK→users | |
 | rsvp | string | `invited`（被邀请未回应）/ `going` / `not_going` / `maybe` |
 | source | string | `self`（自己点进来）/ `invited`（被邀请） |
 | add_to_calendar | bool | 报名时是否联动生成日程（默认 true） |
@@ -194,10 +191,10 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 > **收件箱来源**：`rsvp=invited` 的参与记录即「待回应活动邀请」。发起人据此查看「谁还没回应」（P0 即可用）。
 
-### 4.8 schedules（个人日程）
+### 4.7 schedules（个人日程）
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| user_id | uint, FK→users | 所属用户 |
+| user_id | uuid, FK→users | 所属用户 |
 | title | string | 标题（手动日程用户填；活动日程取活动标题） |
 | start_at | datetime | |
 | end_at | datetime, nullable | |
@@ -209,20 +206,20 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 > **联动规则**：仅当参与记录 `rsvp ∈ {going, maybe}` 且 `add_to_calendar=true` 时，upsert 一条 source=event 的 schedule（默认 busy_only）；当 rsvp 改为 not_going/取消报名，或 add_to_calendar=false 时，删除该 schedule。用户手动改过的可见性需保留（upsert 时不覆盖用户已改的 visibility）。
 
-### 4.9 group_invites
+### 4.8 group_invites
 群组邀请，进入收件箱供被邀请人批阅（区别于用邀请码自助加入）。
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | group_id | uint, FK→groups | |
-| inviter_id | uint, FK→users | 邀请人 |
-| invitee_id | uint, FK→users | 被邀请人 |
+| inviter_id | uuid, FK→users | 邀请人 |
+| invitee_id | uuid, FK→users | 被邀请人 |
 | status | string | `pending` / `accepted` / `rejected` |
 | 唯一约束 | (group_id, invitee_id) | |
 
-### 4.10 notifications
+### 4.9 notifications
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| user_id | uint, FK→users | 接收者 |
+| user_id | uuid, FK→users | 接收者 |
 | type | string | `friend_request` / `friend_accepted` / `event_invite` / `event_changed` / `event_cancelled` / `group_invite` |
 | payload | jsonb/text | 关联实体 id 与展示数据 |
 | read_at | datetime, nullable | 已读时间 |
@@ -233,24 +230,25 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 ## 5. API 接口设计
 
-> 统一前缀 `/api`。鉴权用 JWT（HttpOnly Cookie）。响应体统一 `{ "data": ..., "error": null }`。错误码用 HTTP status + `{ "error": { "code", "message" } }`。
+> 统一前缀 `/api`。鉴权用 **Supabase 签发的 JWT**（前端在 `Authorization: Bearer <token>` 携带，Gin 中间件验签）。响应体统一 `{ "data": ..., "error": null }`。错误码用 HTTP status + `{ "error": { "code", "message" } }`。
 
 ### 5.1 认证 Auth
+> 注册/登录/登出/重置密码**由前端直连 Supabase Auth（supabase-js）完成**，后端不实现这些端点。Gin 侧只做 JWT 验签中间件 + 读取当前用户档案。
+
+> **认证边界说明**：前端引入 `supabase-js` 的目的仅限于调用 Supabase Auth 能力（如 `signUp`、`signInWithPassword`、`resetPasswordForEmail`、`getSession`、`signOut`）。**前端不得使用 `supabase.from(...)` 或 `supabase.rpc(...)` 直接读写业务表/业务逻辑**；活动、RSVP、日程、好友、群组、收件箱、通知等业务数据统一通过 Gin 暴露的 `/api/*` 访问。
+
 | 方法 | 路径 | 说明 | 鉴权 |
 |------|------|------|------|
-| POST | /api/auth/register | 邮箱+密码注册 | 否 |
-| POST | /api/auth/login | 邮箱+密码登录，设 Cookie | 否 |
-| POST | /api/auth/logout | 登出，清 Cookie | 是 |
-| POST | /api/auth/wechat/mock | Mock 微信登录（传 openid/昵称/头像，无则随机） | 否 |
-| GET  | /api/auth/wechat/callback | 真实微信 OAuth 回调（P1） | 否 |
-| GET  | /api/auth/me | 当前用户信息 | 是 |
+| GET | /api/auth/me | 当前用户档案（验签 Supabase JWT 后查 `public.users`） | 是 |
+
+> **验签方式**：用 Supabase project 的 JWT secret 验 HS256，或拉取项目 JWKS 验签。token 内 `sub` 即 `auth.users.id`，与 `public.users.id` 一致。前端登出由 supabase-js 清理本地 session，无需后端端点。
 
 ### 5.2 用户 Users
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | /api/users/me | 个人资料 |
 | PATCH | /api/users/me | 更新昵称/头像 |
-| DELETE | /api/users/me | 注销（软删除，置 deactivated） |
+| DELETE | /api/users/me | 注销（软删除 `public.users` 置 deactivated，并调用 Supabase Admin API 删除/禁用 `auth.users`） |
 | GET | /api/users/search?q= | 按昵称/邮箱搜索（加好友用） |
 
 ### 5.3 好友 Friends
@@ -334,9 +332,9 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 | 页面 | 路由 | 核心交互 |
 |------|------|---------|
-| 启动/登录 | `/login` | 邮箱登录、邮箱注册切换、Mock 微信一键登录（开发态多身份切换） |
+| 启动/登录 | `/login` | 邮箱登录、邮箱注册切换、忘记密码/重置（均经 Supabase Auth） |
 | 日历（首页） | `/` | 月视图 + 标记点 + 颜色图例；点日期展开当天事件抽屉；冲突时段做视觉标记（如角标/叠层）；筛选 全部/我的群/好友（P1）；右下角「+」创建活动/日程 |
-| 活动详情 | `/e/:slug` | 封面/类型色块、时间地点、报名人数与头像墙、RSVP 三态按钮 +「加入日历」勾选与可见性、邀请好友、分享按钮（复制链接/微信）；报名时若与已有日程冲突弹软提示（可继续）；未登录显示只读 + 登录后报名引导；满员禁用 going；发起人可见「未回应」名单 |
+| 活动详情 | `/e/:slug` | 封面/类型色块、时间地点、报名人数与头像墙、RSVP 三态按钮 +「加入日历」勾选与可见性、邀请好友、分享按钮（复制链接，粘贴到微信群等渠道）；报名时若与已有日程冲突弹软提示（可继续）；未登录显示只读 + 登录后报名引导；满员禁用 going；发起人可见「未回应」名单 |
 | 创建活动 | `/events/new` | 选发起范围（个人/群）、标题、类型选择器、时间选择、地点、人数上限；提交后跳详情并弹分享 |
 | 我的活动 | `/events` | 我发起/参与，分「即将开始 / 已过期」 |
 | 创建/编辑日程 | `/schedules/new`、`/schedules/:id` | 标题、时间、地点、可见性选择（public/busy_only/private 带说明）；选好时间后实时提示是否与现有日程冲突（不阻止保存） |
@@ -367,18 +365,35 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 | 日程时间冲突 | 软提示，不阻止：允许多条重叠日程并存；报名/建/改日程时返回 conflicts 列表供前端提示；日历对冲突时段视觉标记。判定用半开区间，相邻不算冲突 |
 | 自动日程可见性 | 用户手动改过后，后续报名联动 upsert 不覆盖用户设定 |
 | 匿名访问详情 | 可只读；点 RSVP 时引导登录，登录后回到原活动 |
-| 微信内打开 | 微信屏蔽自定义 OG → 走默认抓取；P1 用 JS-SDK 优化卡片 |
+| 微信内打开 | 标准 OG meta 会正常提供，但微信内实际展示效果不做保证：可能显示默认链接预览、普通链接或风险提示页。境外域名在微信内也存在访问不稳定的可能，P0 接受该风险，不承诺微信内最佳体验（自定义卡片需企业主体，已移除） |
 | 时区 | 后端 UTC，前端 Asia/Shanghai 展示与输入转换 |
 
 ---
 
 ## 8. 技术栈
 
-- **后端**: Go + Gin + GORM；SQLite（开发）/ PostgreSQL（生产）
-- **前端**: React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
-- **认证**: JWT（HttpOnly Cookie，SameSite=Lax）
+- **后端**: Go + Gin + GORM；Supabase local（开发/测试，本地 PostgreSQL + Auth）/ 阿里云 Supabase Postgres（生产，地域待上线前拍板，当前倾向杭州）
+- **前端**: React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui；Auth 用 supabase-js 直连 Supabase
+- **认证**: Supabase Auth 托管（邮箱+密码/重置密码）；Gin 验签 Supabase JWT（`Authorization: Bearer`），不自行签发
 - **设计**: 移动端优先，Luma 风格
-- **测试**: 后端 Go `testing` + httptest（服务层 + handler）；前端组件测试（Vitest + Testing Library）
+- **测试**: 后端 Go `testing` + httptest（服务层 + handler），依赖 Supabase local / PostgreSQL test DB 验证数据库行为；前端组件测试（Vitest + Testing Library）
+
+> **数据库一致性原则**：开发、测试、生产均以 PostgreSQL 语义为准。Supabase local 用于本地复现 `auth` schema、`auth.users` trigger、uuid、jsonb、partial unique index 等关键能力；不引入 SQLite，避免因方言和类型系统差异产生仅在生产暴露的问题。
+
+### 8.1 部署架构（香港 ECS 单机部署）
+
+> 当前以 **香港阿里云 ECS 单机部署** 为基准方案：先把架构跑通与验证真实访问质量，再决定是否需要迁移或拆分。因服务器位于香港，当前默认**不备案**；Cloudflare 仅承担 DNS 管理职责，不作为架构核心依赖。
+
+- **前端**: React 构建产物（`dist`）直接部署在香港 ECS，由 Nginx 或 Caddy 托管静态文件
+- **后端**: Gin 与前端同机部署在香港 ECS，通过反向代理将 `/api/*` 转发给 Gin
+- **数据库 + Auth**: 阿里云 Supabase，承载 Postgres + Supabase Auth；项目需开通公网访问。地域待上线前以香港 ECS 到各候选地域（优先杭州）的实测延迟与稳定性决定
+- **域名**: 域名托管在 Cloudflare，**默认灰云（DNS only）**，不默认开代理；正式域名解析到香港 ECS 公网 IP
+- **HTTPS**: 正式上线后由 Nginx/Caddy + Let's Encrypt（或等价方案）签发证书；在未购买域名前，允许通过 ECS 公网 IP 进行小范围内测
+- **访问路径**: 优先采用**同域部署**，例如 `example.com` 提供前端页面，`example.com/api/*` 转发 Gin，减少 CORS 和多域配置复杂度
+- **边界**: 前端只通过 Supabase 做 Auth（拿 JWT）+ 可选 Realtime；**所有业务数据读写一律走 Gin**，避免 RLS 与 Gin 两套权限模型分裂。Gin 用 service_role 连接（绕过 RLS，业务鉴权在 Gin 内完成）
+- **前端允许使用的 Supabase 能力**: 仅限认证与 session 管理（注册、登录、登出、邮箱验证、重置密码、获取当前 session）；**不允许**在前端直接查询 `events`、`schedules`、`friendships`、`groups`、`notifications` 等业务表，也不允许把复杂业务逻辑下沉到前端直接调用的 Supabase RPC
+- **运维策略**: 默认先全灰云跑通；若后续出现源站暴露、被扫或抗攻击需求，再评估开启 Cloudflare 代理。若发生域名访问异常，优先准备备用域名而不是依赖裸 IP 作为正式入口
+- **性能判断**: 目标用户主要在广东，香港链路通常可用，但稳定性以后续实测数据为准，不在 spec 中预设绝对结论
 
 ---
 
@@ -386,8 +401,8 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 
 > 每步可独立交付与测试，遵循核心闭环优先。
 
-1. **项目骨架**：Go+Gin 工程结构、GORM 连接、migration；React+Vite+Tailwind+shadcn 脚手架；前后端联调跑通 `/api/health`。
-2. **认证（P0）**：users + auth_providers，邮箱注册/登录、Mock 微信登录、JWT Cookie 中间件、`/me`。
+1. **项目骨架**：Go+Gin 工程结构、GORM 连接（开发/测试 Supabase local PostgreSQL，生产阿里云 Supabase Postgres）、migration；React+Vite+Tailwind+shadcn 脚手架 + supabase-js；前后端联调跑通 `/api/health`。
+2. **认证（P0）**：配置 Supabase Auth（邮箱+密码/重置密码）；前端 supabase-js 接入登录/注册；`public.users` 档案表 + `on auth.users insert` trigger 同步；Gin JWT 验签中间件、`/api/auth/me`。
 3. **活动 + 分享（P0）**：events 表、创建/详情、share_slug、`/e/:slug` OG meta、匿名只读详情页。
 4. **RSVP + 自动日程（P0，核心闭环）**：event_participants（含 invited 状态、add_to_calendar）、报名批阅、schedules 表与联动 upsert/删除、满员阻止。
 5. **个人日程 + 日历月视图（P0）**：手动日程 CRUD、可见性、`/api/calendar` 聚合、月视图 UI + 颜色编码。
@@ -395,11 +410,15 @@ Web 应用（移动端优先）。用户通过微信群分享活动链接，群�
 7. **群组（P0）**：groups/group_members/group_invites、创建/加入/退群/邀请入群、群内发起活动、群活动列表。
 8. **统一收件箱 + 通知（P0）**：`/api/inbox` 聚合活动邀请/好友申请/群组邀请，行内批阅；notifications 提醒流与未读计数。
 9. **打磨**：Luma 风格视觉细化、空状态、加载态、移动端适配回归。
-10. **P1 起步**：真实微信 OAuth、好友日程查看、日历筛选、JS-SDK 分享卡片。
+10. **部署上线**：香港 ECS 安装 Nginx/Caddy，托管前端静态文件并反代 Gin；先用 ECS 公网 IP 做小范围内测，验证广东用户访问与登录链路；确认无明显问题后购买域名，由 Cloudflare 做 DNS 解析并配置 HTTPS，同时更新 Supabase 的 `Site URL` / `Redirect URLs`。
+11. **P1 起步**：好友日程查看、日历筛选、活动编辑/评论、周/日视图、候补队列。
 
 ---
 
 ## 10. 待评审 / 后续可深化
 - 推荐时段算法（P2）的具体规则。
 - 候补队列递补的通知与时限策略（P1）。
-- 真实微信 OAuth 与账号绑定的合并冲突处理（P1/P2）。
+- 注销账号时 `auth.users` 与业务数据（个人活动取消、群活动归属、好友关系、日程）的级联清理细节。
+- 将来注册企业主体后，微信生态能力（OAuth 登录、JS-SDK 分享卡片、模板消息）的引入与是否需迁回大陆备案。
+- Supabase 最终地域选择（优先杭州，但以上线前从香港 ECS 的实际延迟、抖动与登录成功率压测结果为准）。
+- 从「公网 IP 内测」切换到「正式域名 + HTTPS」时，Supabase 回调地址、OG 分享链接与站点配置的切换清单。
