@@ -4,16 +4,18 @@ import (
 	"github.com/bytedance/calandar/apps/api/internal/auth"
 	"github.com/bytedance/calandar/apps/api/internal/config"
 	"github.com/bytedance/calandar/apps/api/internal/events"
+	"github.com/bytedance/calandar/apps/api/internal/schedules"
 	"github.com/bytedance/calandar/apps/api/internal/users"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 type Dependencies struct {
-	Config       config.Config
-	DB           *gorm.DB
-	EventService *events.Service
-	UserService  *users.Service
+	Config          config.Config
+	DB              *gorm.DB
+	EventService    *events.Service
+	UserService     *users.Service
+	ScheduleService *schedules.Service
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -45,6 +47,17 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/events/:id/cancel", eventHandler.HandleCancel)
 	api.GET("/events/:slug", eventHandler.HandleGetDetail)
 	router.GET("/e/:slug", eventHandler.HandleOGPage)
+
+	scheduleService := deps.ScheduleService
+	if scheduleService == nil {
+		scheduleService = schedules.NewService(schedules.NewRepository(deps.DB))
+	}
+	scheduleHandler := schedules.NewHandler(scheduleService)
+	authenticated.GET("/schedules", scheduleHandler.HandleList)
+	authenticated.POST("/schedules", scheduleHandler.HandleCreate)
+	authenticated.GET("/schedules/conflicts", scheduleHandler.HandleConflicts)
+	authenticated.PATCH("/schedules/:id", scheduleHandler.HandleUpdate)
+	authenticated.DELETE("/schedules/:id", scheduleHandler.HandleDelete)
 
 	return router
 }
