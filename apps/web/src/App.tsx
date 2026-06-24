@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, Route, Routes } from 'react-router-dom'
 import { apiGet } from './lib/api'
+import EventDetailPage from './EventDetailPage'
 import LoginPage from './LoginPage'
+import NewEventPage from './NewEventPage'
 import ProfilePage from './ProfilePage'
 import './index.css'
 
@@ -26,6 +28,9 @@ function HomePage() {
           <Link className="rounded-full bg-white px-4 py-2 font-medium text-neutral-950" to="/login">
             登录
           </Link>
+          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/events/new">
+            创建活动
+          </Link>
           <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/profile">
             个人页
           </Link>
@@ -41,6 +46,8 @@ export default function App() {
       <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/profile" element={<ProfilePage />} />
+      <Route path="/events/new" element={<NewEventPage />} />
+      <Route path="/events/:slug" element={<EventDetailPage />} />
     </Routes>
   )
 }

@@ -3,9 +3,17 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { apiGet } from './lib/api'
+import { getEventBySlug } from './lib/events'
 
 vi.mock('./lib/api', () => ({
   apiGet: vi.fn(),
+}))
+vi.mock('./lib/events', () => ({
+  getEventBySlug: vi.fn(),
+  createEvent: vi.fn(),
+  rsvpEvent: vi.fn(),
+  cancelEvent: vi.fn(),
+  listMine: vi.fn(),
 }))
 vi.mock('./lib/supabase', () => ({
   supabase: {
@@ -19,6 +27,7 @@ vi.mock('./lib/supabase', () => ({
 }))
 
 const mockedApiGet = vi.mocked(apiGet)
+const mockedGetEventBySlug = vi.mocked(getEventBySlug)
 
 function renderApp(path = '/') {
   return render(
@@ -31,6 +40,7 @@ function renderApp(path = '/') {
 describe('App', () => {
   beforeEach(() => {
     mockedApiGet.mockReset()
+    mockedGetEventBySlug.mockReset()
   })
 
   it('renders the health status returned by the API', async () => {
@@ -81,5 +91,38 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: 'Lily' })).toBeInTheDocument()
     })
     expect(mockedApiGet).toHaveBeenCalledWith('/api/users/me')
+  })
+
+  it('renders the new event route', () => {
+    renderApp('/events/new')
+
+    expect(screen.getByRole('heading', { name: '创建活动' })).toBeInTheDocument()
+    expect(screen.getByLabelText('标题')).toBeInTheDocument()
+    expect(screen.getByLabelText('开始时间')).toBeInTheDocument()
+  })
+
+  it('loads the event detail route by slug', async () => {
+    mockedGetEventBySlug.mockResolvedValueOnce({
+      event: {
+        id: 12,
+        title: '周末攀岩',
+        type: 'climbing',
+        scope: 'personal',
+        start_at: '2026-06-24T12:00:00Z',
+        end_at: null,
+        location: '岩馆',
+        capacity: 6,
+        status: 'active',
+        share_slug: 'abc123def4',
+      },
+      going_count: 2,
+    })
+
+    renderApp('/events/abc123def4')
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '周末攀岩' })).toBeInTheDocument()
+    })
+    expect(mockedGetEventBySlug).toHaveBeenCalledWith('abc123def4')
   })
 })
