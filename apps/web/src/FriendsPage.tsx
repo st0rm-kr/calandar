@@ -10,6 +10,7 @@ import {
   sendFriendRequest,
 } from './lib/friends'
 import type { Friend, FriendRequest, UserSearchResult } from './lib/friends'
+import { LoadingState } from './components/LoadingState'
 
 export default function FriendsPage() {
   const [friends, setFriends] = useState<Friend[]>([])
@@ -18,6 +19,7 @@ export default function FriendsPage() {
   const [results, setResults] = useState<UserSearchResult[]>([])
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [loaded, setLoaded] = useState(false)
 
   async function refresh() {
     try {
@@ -30,6 +32,8 @@ export default function FriendsPage() {
       setError('')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '无法加载好友')
+    } finally {
+      setLoaded(true)
     }
   }
 
@@ -191,7 +195,9 @@ export default function FriendsPage() {
           <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
             好友列表
           </h2>
-          {friends.length === 0 ? (
+          {!loaded ? (
+            <LoadingState />
+          ) : friends.length === 0 ? (
             <p className="mt-2 text-sm text-white/60">还没有好友。</p>
           ) : (
             <ul className="mt-2 space-y-2">

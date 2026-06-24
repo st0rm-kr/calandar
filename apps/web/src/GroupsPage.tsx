@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createGroup, joinGroup, listGroups } from './lib/groups'
 import type { Group } from './lib/groups'
+import { LoadingState } from './components/LoadingState'
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<Group[]>([])
@@ -9,6 +10,7 @@ export default function GroupsPage() {
   const [description, setDescription] = useState('')
   const [inviteCode, setInviteCode] = useState('')
   const [error, setError] = useState('')
+  const [loaded, setLoaded] = useState(false)
 
   async function refresh() {
     try {
@@ -16,6 +18,8 @@ export default function GroupsPage() {
       setError('')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '无法加载群组')
+    } finally {
+      setLoaded(true)
     }
   }
 
@@ -117,7 +121,9 @@ export default function GroupsPage() {
           <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
             我的群组
           </h2>
-          {groups.length === 0 ? (
+          {!loaded ? (
+            <LoadingState />
+          ) : groups.length === 0 ? (
             <p className="mt-2 text-sm text-white/60">还没有加入任何群组。</p>
           ) : (
             <ul className="mt-2 space-y-2">

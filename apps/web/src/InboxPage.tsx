@@ -6,6 +6,7 @@ import { acceptFriendRequest, rejectFriendRequest } from './lib/friends'
 import { acceptGroupInvite, rejectGroupInvite } from './lib/groups'
 import { rsvpEvent } from './lib/events'
 import type { EventRSVP } from './lib/events'
+import { LoadingState } from './components/LoadingState'
 
 const rsvpOptions: Array<{ value: EventRSVP; label: string }> = [
   { value: 'going', label: '参加' },
@@ -190,6 +191,8 @@ export default function InboxPage() {
         {result && result.items.length === 0 ? (
           <p className="text-sm text-white/60">收件箱已清空。</p>
         ) : null}
+
+        {!result && !error ? <LoadingState /> : null}
 
         <ul className="space-y-2">
           {result?.items.map((item) => (

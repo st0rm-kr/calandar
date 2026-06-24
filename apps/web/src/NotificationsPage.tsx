@@ -6,6 +6,7 @@ import {
   markNotificationRead,
 } from './lib/notifications'
 import type { Notification, NotificationList } from './lib/notifications'
+import { LoadingState } from './components/LoadingState'
 
 const typeLabels: Record<string, string> = {
   friend_request: '好友申请',
@@ -110,6 +111,8 @@ export default function NotificationsPage() {
         {list && list.items.length === 0 ? (
           <p className="text-sm text-white/60">还没有通知。</p>
         ) : null}
+
+        {!list && !error ? <LoadingState /> : null}
 
         <ul className="space-y-2">
           {list?.items.map((notification) => (
