@@ -13,7 +13,7 @@ export function RequireAuth({ session, children }: RequireAuthProps) {
 
   if (session.loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white">
+      <div className="min-h-screen bg-canvas text-ink">
         <LoadingState />
       </div>
     )

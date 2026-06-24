@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apiGet } from './lib/api'
+import { Avatar } from './components/Avatar'
 
 type Profile = {
   id: string
@@ -27,37 +28,51 @@ export default function ProfilePage() {
   }, [])
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-      <section className="mx-auto max-w-md rounded-3xl bg-white/10 p-6 shadow-xl">
-        <Link className="text-sm text-white/60" to="/">
-          Hangout
-        </Link>
-        <p className="mt-6 text-sm uppercase tracking-[0.2em] text-white/50">Profile</p>
-        {profile ? (
-          <div className="mt-4">
-            {profile.avatar_url ? (
-              <img alt="" className="mb-4 h-20 w-20 rounded-full object-cover" src={profile.avatar_url} />
-            ) : null}
-            <h1 className="text-3xl font-semibold">{profile.display_name}</h1>
-            <dl className="mt-6 space-y-3 text-sm text-white/70">
-              <div>
-                <dt className="text-white/40">邮箱</dt>
-                <dd>{profile.email ?? '未设置'}</dd>
-              </div>
-              <div>
-                <dt className="text-white/40">状态</dt>
-                <dd>{profile.status}</dd>
-              </div>
-              <div>
-                <dt className="text-white/40">用户 ID</dt>
-                <dd className="break-all">{profile.id}</dd>
-              </div>
-            </dl>
-          </div>
-        ) : (
-          <p className="mt-4 text-white/70">{error || '正在加载个人资料...'}</p>
-        )}
-      </section>
-    </main>
+    <div>
+      <Link className="text-sm font-semibold text-brand" to="/me">
+        ‹ Hangout
+      </Link>
+      {profile ? (
+        <div className="mt-4 rounded-4xl border border-hairline bg-surface p-6 shadow-card">
+          <Avatar
+            name={profile.display_name}
+            seed={profile.id}
+            size="lg"
+            src={profile.avatar_url}
+          />
+          <h1 className="mt-4 text-2xl font-bold tracking-tight">
+            {profile.display_name}
+          </h1>
+          <dl className="mt-6 space-y-3 text-sm">
+            <Field label="邮箱" value={profile.email ?? '未设置'} />
+            <Field label="状态" value={profile.status} />
+            <Field label="用户 ID" value={profile.id} mono />
+          </dl>
+        </div>
+      ) : (
+        <p className="mt-6 font-semibold text-muted">
+          {error || '正在加载个人资料...'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Field({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div>
+      <dt className="text-muted">{label}</dt>
+      <dd className={`mt-0.5 font-semibold text-ink ${mono ? 'break-all font-mono' : ''}`}>
+        {value}
+      </dd>
+    </div>
   )
 }

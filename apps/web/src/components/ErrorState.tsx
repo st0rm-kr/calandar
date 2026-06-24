@@ -5,11 +5,11 @@ type ErrorStateProps = {
 
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-3xl border border-red-400/30 bg-red-500/10 px-6 py-8 text-center">
-      <p className="text-sm text-red-200">{message}</p>
+    <div className="flex flex-col items-center gap-3 rounded-3xl border border-rose/30 bg-rose-soft px-6 py-8 text-center">
+      <p className="text-sm font-semibold text-rose">{message}</p>
       {onRetry ? (
         <button
-          className="rounded-full border border-white/20 px-4 py-1.5 text-sm text-white/80"
+          className="cursor-pointer rounded-full bg-rose px-4 py-1.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-rose/90"
           onClick={onRetry}
           type="button"
         >

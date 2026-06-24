@@ -161,7 +161,7 @@ describe('App', () => {
     renderApp('/')
 
     await waitFor(() => {
-      expect(screen.getByText('个人日程')).toBeInTheDocument()
+      expect(screen.getByText('时间流')).toBeInTheDocument()
     })
   })
 

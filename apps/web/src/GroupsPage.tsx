@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { createGroup, joinGroup, listGroups } from './lib/groups'
 import type { Group } from './lib/groups'
 import { LoadingState } from './components/LoadingState'
+import { EmptyState } from './components/EmptyState'
+import { Avatar } from './components/Avatar'
 
 export default function GroupsPage() {
   const [groups, setGroups] = useState<Group[]>([])
@@ -57,96 +59,98 @@ export default function GroupsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-      <section className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center justify-between">
-          <Link className="text-sm text-white/60" to="/">
-            Hangout
-          </Link>
-          <Link className="text-sm text-white/60" to="/friends">
-            我的好友
-          </Link>
-        </div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">群组</h1>
+        <Link className="text-sm font-semibold text-brand" to="/friends">
+          我的好友
+        </Link>
+      </div>
 
-        <h1 className="text-3xl font-semibold">群组</h1>
+      {error ? <p className="text-sm font-semibold text-rose">{error}</p> : null}
 
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
-
-        <form
-          className="space-y-3 rounded-3xl bg-white/5 p-4"
-          onSubmit={handleCreate}
+      <form
+        className="space-y-3 rounded-3xl border border-hairline bg-surface p-4 shadow-card"
+        onSubmit={handleCreate}
+      >
+        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+          创建群组
+        </h2>
+        <input
+          className="w-full rounded-2xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none transition-colors duration-200 focus:border-brand"
+          onChange={(event) => setName(event.target.value)}
+          placeholder="群名称"
+          value={name}
+        />
+        <input
+          className="w-full rounded-2xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none transition-colors duration-200 focus:border-brand"
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="群简介（可选）"
+          value={description}
+        />
+        <button
+          className="cursor-pointer rounded-2xl bg-brand px-4 py-2.5 text-sm font-bold text-white transition-colors duration-200 hover:bg-brand-ink"
+          type="submit"
         >
-          <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
-            创建群组
-          </h2>
-          <input
-            className="w-full rounded-2xl bg-white/10 px-4 py-2 text-sm outline-none"
-            onChange={(event) => setName(event.target.value)}
-            placeholder="群名称"
-            value={name}
-          />
-          <input
-            className="w-full rounded-2xl bg-white/10 px-4 py-2 text-sm outline-none"
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="群简介（可选）"
-            value={description}
-          />
-          <button
-            className="rounded-2xl bg-white px-4 py-2 text-sm font-medium text-neutral-950"
-            type="submit"
-          >
-            创建
-          </button>
-        </form>
+          创建
+        </button>
+      </form>
 
-        <form
-          className="flex gap-2 rounded-3xl bg-white/5 p-4"
-          onSubmit={handleJoin}
+      <form
+        className="flex gap-2 rounded-3xl border border-hairline bg-surface p-4 shadow-card"
+        onSubmit={handleJoin}
+      >
+        <input
+          className="flex-1 rounded-2xl border border-hairline bg-canvas px-4 py-2.5 text-sm outline-none transition-colors duration-200 focus:border-brand"
+          onChange={(event) => setInviteCode(event.target.value)}
+          placeholder="输入邀请码加入群组"
+          value={inviteCode}
+        />
+        <button
+          className="cursor-pointer rounded-2xl bg-grass px-4 py-2.5 text-sm font-bold text-white transition-colors duration-200 hover:bg-grass/90"
+          type="submit"
         >
-          <input
-            className="flex-1 rounded-2xl bg-white/10 px-4 py-2 text-sm outline-none"
-            onChange={(event) => setInviteCode(event.target.value)}
-            placeholder="输入邀请码加入群组"
-            value={inviteCode}
-          />
-          <button
-            className="rounded-2xl bg-sky-400 px-4 py-2 text-sm font-medium text-neutral-950"
-            type="submit"
-          >
-            加入
-          </button>
-        </form>
+          加入
+        </button>
+      </form>
 
-        <div>
-          <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">
-            我的群组
-          </h2>
-          {!loaded ? (
-            <LoadingState />
-          ) : groups.length === 0 ? (
-            <p className="mt-2 text-sm text-white/60">还没有加入任何群组。</p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {groups.map((group) => (
-                <li key={group.id}>
-                  <Link
-                    className="flex items-center justify-between rounded-2xl border border-white/10 p-3 text-sm hover:bg-white/5"
-                    to={`/groups/${group.id}`}
-                  >
+      <div>
+        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+          我的群组
+        </h2>
+        {!loaded ? (
+          <LoadingState />
+        ) : groups.length === 0 ? (
+          <div className="mt-2">
+            <EmptyState
+              title="还没有加入任何群组"
+              description="创建群组或用邀请码加入。"
+            />
+          </div>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {groups.map((group) => (
+              <li key={group.id}>
+                <Link
+                  className="flex items-center justify-between rounded-2xl border border-hairline bg-surface p-4 text-sm shadow-card transition-colors duration-200 hover:bg-canvas"
+                  to={`/groups/${group.id}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar name={group.name} seed={`group-${group.id}`} />
                     <div>
-                      <p className="font-medium">{group.name}</p>
+                      <p className="font-bold">{group.name}</p>
                       {group.description ? (
-                        <p className="text-white/50">{group.description}</p>
+                        <p className="text-muted">{group.description}</p>
                       ) : null}
                     </div>
-                    <span className="text-white/40">查看</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
-    </main>
+                  </div>
+                  <span className="text-muted">›</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   )
 }

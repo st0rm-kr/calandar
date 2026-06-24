@@ -7,6 +7,7 @@ import {
 } from './lib/notifications'
 import type { Notification, NotificationList } from './lib/notifications'
 import { LoadingState } from './components/LoadingState'
+import { EmptyState } from './components/EmptyState'
 
 const typeLabels: Record<string, string> = {
   friend_request: '好友申请',
@@ -82,66 +83,59 @@ export default function NotificationsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-      <section className="mx-auto max-w-2xl space-y-6">
-        <div className="flex items-center justify-between">
-          <Link className="text-sm text-white/60" to="/">
-            Hangout
-          </Link>
-          <Link className="text-sm text-white/60" to="/inbox">
-            收件箱
-          </Link>
-        </div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">通知</h1>
+        <Link className="text-sm font-semibold text-brand" to="/inbox">
+          收件箱
+        </Link>
+      </div>
 
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold">通知</h1>
-          {list && list.unread_count > 0 ? (
+      {list && list.unread_count > 0 ? (
+        <button
+          className="cursor-pointer rounded-full border border-hairline bg-surface px-3 py-1 text-sm font-bold text-muted shadow-card transition-colors duration-200 hover:text-ink"
+          onClick={handleReadAll}
+          type="button"
+        >
+          全部已读 ({list.unread_count})
+        </button>
+      ) : null}
+
+      {error ? <p className="text-sm font-semibold text-rose">{error}</p> : null}
+
+      {!list && !error ? <LoadingState /> : null}
+
+      {list && list.items.length === 0 ? (
+        <EmptyState title="还没有通知" description="有新动态时会在这里提醒你。" />
+      ) : null}
+
+      <ul className="space-y-2">
+        {list?.items.map((notification) => (
+          <li key={notification.id}>
             <button
-              className="rounded-full border border-white/20 px-3 py-1 text-sm"
-              onClick={handleReadAll}
+              className={`w-full cursor-pointer rounded-2xl border bg-surface p-4 text-left shadow-card transition-colors duration-200 ${
+                notification.read_at
+                  ? 'border-hairline'
+                  : 'border-brand/30 bg-brand-soft'
+              }`}
+              onClick={() => handleOpen(notification)}
               type="button"
             >
-              全部已读 ({list.unread_count})
+              <div className="flex items-center justify-between">
+                <span className="font-bold">
+                  {typeLabels[notification.type] ?? notification.type}
+                </span>
+                {!notification.read_at ? (
+                  <span className="h-2.5 w-2.5 rounded-full bg-brand" />
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-muted/70">
+                {formatDateTime(notification.created_at)}
+              </p>
             </button>
-          ) : null}
-        </div>
-
-        {error ? <p className="text-sm text-red-300">{error}</p> : null}
-
-        {list && list.items.length === 0 ? (
-          <p className="text-sm text-white/60">还没有通知。</p>
-        ) : null}
-
-        {!list && !error ? <LoadingState /> : null}
-
-        <ul className="space-y-2">
-          {list?.items.map((notification) => (
-            <li key={notification.id}>
-              <button
-                className={`w-full rounded-2xl border p-4 text-left ${
-                  notification.read_at
-                    ? 'border-white/5 text-white/50'
-                    : 'border-white/20 bg-white/5'
-                }`}
-                onClick={() => handleOpen(notification)}
-                type="button"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
-                    {typeLabels[notification.type] ?? notification.type}
-                  </span>
-                  {!notification.read_at ? (
-                    <span className="h-2 w-2 rounded-full bg-sky-400" />
-                  ) : null}
-                </div>
-                <p className="mt-1 text-xs text-white/30">
-                  {formatDateTime(notification.created_at)}
-                </p>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

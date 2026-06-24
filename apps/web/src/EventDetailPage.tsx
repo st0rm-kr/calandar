@@ -5,6 +5,7 @@ import { getEventBySlug, rsvpEvent } from './lib/events'
 import type { SessionState } from './hooks/useSession'
 import { ConflictBanner } from './components/ConflictBanner'
 import { EventTypeBadge } from './components/EventTypeBadge'
+import { metaForType } from './lib/eventType'
 
 const rsvpOptions: Array<{ value: EventRSVP; label: string }> = [
   { value: 'going', label: '我要参加' },
@@ -21,6 +22,14 @@ function formatDateTime(value: string): string {
 
 type EventDetailPageProps = {
   session?: SessionState
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <main className="min-h-screen bg-canvas px-5 py-8 text-ink">
+      <section className="mx-auto max-w-xl">{children}</section>
+    </main>
+  )
 }
 
 export default function EventDetailPage({ session }: EventDetailPageProps) {
@@ -98,160 +107,159 @@ export default function EventDetailPage({ session }: EventDetailPageProps) {
 
   if (loadError && !detail) {
     return (
-      <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-        <section className="mx-auto max-w-xl rounded-3xl bg-white/10 p-6 shadow-xl">
-          <Link className="text-sm text-white/60" to="/">
-            Hangout
-          </Link>
-          <p className="mt-6 text-white/70">{loadError}</p>
-        </section>
-      </main>
+      <Shell>
+        <Link className="text-sm font-semibold text-brand" to="/">
+          Hangout
+        </Link>
+        <div className="mt-6 rounded-4xl border border-hairline bg-surface p-6 shadow-card">
+          <p className="text-muted">{loadError}</p>
+        </div>
+      </Shell>
     )
   }
 
   if (!detail) {
     return (
-      <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-        <section className="mx-auto max-w-xl rounded-3xl bg-white/10 p-6 shadow-xl">
-          <p className="text-white/70">正在加载活动...</p>
-        </section>
-      </main>
+      <Shell>
+        <div className="mt-6 rounded-4xl border border-hairline bg-surface p-6 shadow-card">
+          <p className="text-muted">正在加载活动...</p>
+        </div>
+      </Shell>
     )
   }
 
   const event = detail.event
   const disabledRSVP = event.status !== 'active'
+  const meta = metaForType(event.type)
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-      <section className="mx-auto max-w-xl rounded-3xl bg-white/10 p-6 shadow-xl">
-        <Link className="text-sm text-white/60" to="/">
-          Hangout
-        </Link>
-        <p className="mt-6 text-sm uppercase tracking-[0.2em] text-white/50">
-          Event
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <h1 className="text-3xl font-semibold">{event.title}</h1>
-          <EventTypeBadge type={event.type} />
+    <Shell>
+      <Link className="text-sm font-semibold text-brand" to="/">
+        Hangout
+      </Link>
+
+      <div className="mt-4 overflow-hidden rounded-4xl border border-hairline bg-surface shadow-soft">
+        <div className={`h-24 w-full ${meta.block}`} />
+        <div className="p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-3xl font-bold tracking-tight">{event.title}</h1>
+            <EventTypeBadge type={event.type} />
+          </div>
+
+          <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-2">
+            <Detail label="开始" value={formatDateTime(event.start_at)} />
+            <Detail
+              label="结束"
+              value={event.end_at ? formatDateTime(event.end_at) : '未设置'}
+            />
+            <Detail label="地点" value={event.location ?? '未设置'} />
+            <Detail
+              label="名额"
+              value={`${detail.going_count}${
+                event.capacity ? ` / ${event.capacity}` : ''
+              } 人已参加`}
+            />
+          </dl>
+
+          {isFull ? (
+            <p className="mt-5 rounded-2xl border border-tangerine/30 bg-tangerine-soft p-3 text-sm font-semibold text-tangerine">
+              名额已满，参加按钮暂不可用。
+            </p>
+          ) : null}
         </div>
+      </div>
 
-        <dl className="mt-6 grid gap-4 text-sm text-white/75 sm:grid-cols-2">
-          <div>
-            <dt className="text-white/40">开始</dt>
-            <dd>{formatDateTime(event.start_at)}</dd>
-          </div>
-          <div>
-            <dt className="text-white/40">结束</dt>
-            <dd>{event.end_at ? formatDateTime(event.end_at) : '未设置'}</dd>
-          </div>
-          <div>
-            <dt className="text-white/40">地点</dt>
-            <dd>{event.location ?? '未设置'}</dd>
-          </div>
-          <div>
-            <dt className="text-white/40">名额</dt>
-            <dd>
-              {detail.going_count}
-              {event.capacity ? ` / ${event.capacity}` : ''} 人已参加
-            </dd>
-          </div>
-          <div>
-            <dt className="text-white/40">状态</dt>
-            <dd>{event.status}</dd>
-          </div>
-          <div>
-            <dt className="text-white/40">分享链接</dt>
-            <dd className="break-all">/events/{event.share_slug}</dd>
-          </div>
-        </dl>
+      <div className="mt-4 rounded-4xl border border-hairline bg-surface p-6 shadow-card">
+        <h2 className="text-lg font-bold">报名</h2>
 
-        {isFull ? (
-          <p className="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">
-            名额已满，参加按钮暂不可用。
-          </p>
-        ) : null}
+        {!isAuthenticated ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-muted">登录后即可报名这个活动。</p>
+            <Link
+              className="inline-block rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white transition-colors duration-200 hover:bg-brand-ink"
+              to={`/login?redirect=${encodeURIComponent(`/e/${event.share_slug}`)}`}
+            >
+              登录以报名
+            </Link>
+          </div>
+        ) : (
+          <>
+            <label className="mt-4 flex items-center gap-3 text-sm font-semibold text-ink">
+              <input
+                checked={addToCalendar}
+                onChange={(event) => setAddToCalendar(event.target.checked)}
+                type="checkbox"
+              />
+              加入我的日历
+            </label>
 
-        <div className="mt-8 rounded-3xl border border-white/10 p-4">
-          <h2 className="text-lg font-semibold">RSVP</h2>
-
-          {!isAuthenticated ? (
-            <div className="mt-4 space-y-3">
-              <p className="text-sm text-white/60">登录后即可报名这个活动。</p>
-              <Link
-                className="inline-block rounded-full bg-white px-5 py-2.5 text-sm font-medium text-neutral-950"
-                to={`/login?redirect=${encodeURIComponent(`/e/${event.share_slug}`)}`}
+            <label className="mt-4 block text-sm font-semibold text-ink">
+              日历可见性
+              <select
+                className="mt-2 w-full rounded-2xl border border-hairline bg-canvas px-4 py-3 text-ink outline-none transition-colors duration-200 focus:border-brand disabled:opacity-50"
+                disabled={!addToCalendar}
+                onChange={(event) => setVisibility(event.target.value)}
+                value={visibility}
               >
-                登录以报名
-              </Link>
+                <option value="public">公开</option>
+                <option value="busy_only">仅显示忙碌</option>
+                <option value="private">私密</option>
+              </select>
+            </label>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {rsvpOptions.map((option) => {
+                const fullGoingButton = option.value === 'going' && isFull
+                const isPrimary = option.value === 'going'
+                return (
+                  <button
+                    className={`cursor-pointer rounded-full px-4 py-3 text-sm font-bold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40 ${
+                      isPrimary
+                        ? 'bg-brand text-white hover:bg-brand-ink'
+                        : 'border border-hairline text-muted hover:text-ink'
+                    }`}
+                    disabled={
+                      disabledRSVP || fullGoingButton || submittingRSVP !== null
+                    }
+                    key={option.value}
+                    onClick={() => void submitRSVP(option.value)}
+                    type="button"
+                  >
+                    {submittingRSVP === option.value ? '提交中...' : option.label}
+                  </button>
+                )
+              })}
             </div>
-          ) : (
-            <>
-              <label className="mt-4 flex items-center gap-3 text-sm text-white/75">
-                <input
-                  checked={addToCalendar}
-                  onChange={(event) => setAddToCalendar(event.target.checked)}
-                  type="checkbox"
+
+            {message ? (
+              <p className="mt-4 text-sm font-semibold text-grass">{message}</p>
+            ) : null}
+            {error ? (
+              <p className="mt-4 text-sm font-semibold text-rose">{error}</p>
+            ) : null}
+
+            {rsvpResult?.conflicts.length ? (
+              <div className="mt-5">
+                <ConflictBanner
+                  conflicts={rsvpResult.conflicts.map((conflict) => ({
+                    id: conflict.id,
+                    title: conflict.title,
+                  }))}
                 />
-                加入我的日历
-              </label>
-
-              <label className="mt-4 block text-sm font-medium text-white/80">
-                日历可见性
-                <select
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-white outline-none focus:border-white/40"
-                  disabled={!addToCalendar}
-                  onChange={(event) => setVisibility(event.target.value)}
-                  value={visibility}
-                >
-                  <option value="public">公开</option>
-                  <option value="busy_only">仅显示忙碌</option>
-                  <option value="private">私密</option>
-                </select>
-              </label>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                {rsvpOptions.map((option) => {
-                  const fullGoingButton = option.value === 'going' && isFull
-                  return (
-                    <button
-                      className="rounded-full border border-white/20 px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={
-                        disabledRSVP || fullGoingButton || submittingRSVP !== null
-                      }
-                      key={option.value}
-                      onClick={() => void submitRSVP(option.value)}
-                      type="button"
-                    >
-                      {submittingRSVP === option.value
-                        ? '提交中...'
-                        : option.label}
-                    </button>
-                  )
-                })}
               </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    </Shell>
+  )
+}
 
-              {message ? (
-                <p className="mt-4 text-sm text-emerald-300">{message}</p>
-              ) : null}
-              {error ? (
-                <p className="mt-4 text-sm text-red-300">{error}</p>
-              ) : null}
-
-              {rsvpResult?.conflicts.length ? (
-                <div className="mt-5">
-                  <ConflictBanner
-                    conflicts={rsvpResult.conflicts.map((conflict) => ({
-                      id: conflict.id,
-                      title: conflict.title,
-                    }))}
-                  />
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-      </section>
-    </main>
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted">{label}</dt>
+      <dd className="mt-0.5 font-semibold text-ink">{value}</dd>
+    </div>
   )
 }

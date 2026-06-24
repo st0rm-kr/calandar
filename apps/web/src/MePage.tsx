@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { SessionState } from './hooks/useSession'
-import { Card } from './components/Card'
+import { Avatar } from './components/Avatar'
 
 type MePageProps = {
   session: SessionState
@@ -18,45 +18,40 @@ export default function MePage({ session }: MePageProps) {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-semibold tracking-tight">我的</h1>
+      <h1 className="text-2xl font-bold tracking-tight">我的</h1>
 
-      <Card>
+      <div className="rounded-4xl border border-hairline bg-surface p-6 shadow-card">
         <div className="flex items-center gap-4">
-          {profile?.avatar_url ? (
-            <img
-              alt=""
-              className="h-14 w-14 rounded-full object-cover"
-              src={profile.avatar_url}
-            />
-          ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/10 text-lg">
-              {profile?.display_name?.slice(0, 1) ?? '?'}
-            </div>
-          )}
+          <Avatar
+            name={profile?.display_name ?? '未登录'}
+            seed={profile?.id ?? 'me'}
+            size="lg"
+            src={profile?.avatar_url}
+          />
           <div>
-            <p className="text-lg font-medium">
+            <p className="text-xl font-bold">
               {profile?.display_name ?? '未登录'}
             </p>
-            <p className="text-sm text-white/50">{profile?.email ?? ''}</p>
+            <p className="text-sm text-muted">{profile?.email ?? ''}</p>
           </div>
         </div>
-      </Card>
+      </div>
 
       <div className="space-y-2">
         {links.map((link) => (
           <Link
-            className="flex items-center justify-between rounded-2xl border border-white/10 px-4 py-3 text-sm"
+            className="flex cursor-pointer items-center justify-between rounded-2xl border border-hairline bg-surface px-5 py-4 text-sm font-semibold shadow-card transition-colors duration-200 hover:bg-canvas"
             key={link.to}
             to={link.to}
           >
             <span>{link.label}</span>
-            <span className="text-white/30">›</span>
+            <span className="text-muted">›</span>
           </Link>
         ))}
       </div>
 
       <button
-        className="w-full rounded-2xl border border-white/15 px-4 py-3 text-sm text-white/70"
+        className="w-full cursor-pointer rounded-2xl border border-hairline bg-surface px-5 py-4 text-sm font-bold text-rose shadow-card transition-colors duration-200 hover:bg-rose-soft"
         onClick={() => {
           void signOut()
         }}

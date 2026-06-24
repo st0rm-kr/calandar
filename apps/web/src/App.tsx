@@ -24,15 +24,21 @@ function AuthedShell({
   session,
   children,
   showTabs = true,
+  showFab = false,
 }: {
   session: ReturnType<typeof useSession>
   children: React.ReactNode
   showTabs?: boolean
+  showFab?: boolean
 }) {
   const inbox = useAsync(() => getInbox(), [session.session?.access_token])
   return (
     <RequireAuth session={session}>
-      <AppShell inboxCount={inbox.data?.counts.total ?? 0} showTabs={showTabs}>
+      <AppShell
+        inboxCount={inbox.data?.counts.total ?? 0}
+        showFab={showFab}
+        showTabs={showTabs}
+      >
         {children}
       </AppShell>
     </RequireAuth>
@@ -49,7 +55,7 @@ export default function App() {
       <Route
         path="/"
         element={
-          <AuthedShell session={session}>
+          <AuthedShell session={session} showFab>
             <CalendarPage />
           </AuthedShell>
         }
@@ -57,7 +63,7 @@ export default function App() {
       <Route
         path="/calendar"
         element={
-          <AuthedShell session={session}>
+          <AuthedShell session={session} showFab>
             <CalendarPage />
           </AuthedShell>
         }
@@ -65,7 +71,7 @@ export default function App() {
       <Route
         path="/events"
         element={
-          <AuthedShell session={session}>
+          <AuthedShell session={session} showFab>
             <EventsPage />
           </AuthedShell>
         }
