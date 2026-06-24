@@ -3,10 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
-	"log"
 	"net/http"
 	"strings"
 
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -125,8 +125,9 @@ func logAuthFailure(c *gin.Context, reason string, token *jwt.Token) {
 		alg, _ = token.Header["alg"].(string)
 		_, kidPresent = token.Header["kid"]
 	}
-	log.Printf(
-		"auth_failure reason=%q method=%s path=%s alg=%s kid_present=%t client_ip=%s",
+	logger.Warningf(
+		"auth_failure request_id=%s reason=%q method=%s path=%s alg=%s kid_present=%t client_ip=%s",
+		c.Writer.Header().Get("X-Request-ID"),
 		reason,
 		c.Request.Method,
 		c.Request.URL.Path,

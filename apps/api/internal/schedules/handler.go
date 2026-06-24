@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -70,6 +71,13 @@ func (h *Handler) HandleCreate(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof(
+		"schedule_created user_id=%s schedule_id=%d visibility=%s conflict_count=%d",
+		userID,
+		result.Schedule.ID,
+		result.Schedule.Visibility,
+		len(result.Conflicts),
+	)
 	respondOK(c, http.StatusCreated, result)
 }
 
@@ -101,6 +109,13 @@ func (h *Handler) HandleUpdate(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof(
+		"schedule_updated user_id=%s schedule_id=%d visibility=%s conflict_count=%d",
+		userID,
+		result.Schedule.ID,
+		result.Schedule.Visibility,
+		len(result.Conflicts),
+	)
 	respondOK(c, http.StatusOK, result)
 }
 
@@ -119,6 +134,7 @@ func (h *Handler) HandleDelete(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("schedule_deleted user_id=%s schedule_id=%d", userID, scheduleID)
 	respondOK(c, http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -172,6 +188,7 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	case errors.Is(err, ErrScheduleNotFound), errors.Is(err, gorm.ErrRecordNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "schedule not found")
 	default:
+		logger.Errorf("schedule_service_error path=%s error=%q", c.Request.URL.Path, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,6 +24,7 @@ func (h *Handler) HandleList(c *gin.Context) {
 	}
 	result, err := h.service.List(c.Request.Context(), userID)
 	if err != nil {
+		logger.Errorf("inbox_list_failed user_id=%s error=%q", userID, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}

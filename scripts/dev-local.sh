@@ -151,6 +151,8 @@ start_api() {
     cd "$REPO_ROOT"
     API_ADDR="127.0.0.1:8080" \
       DATABASE_URL="$database_url" \
+      LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
+      LOG_TO_STDERR="${LOG_TO_STDERR:-true}" \
       SUPABASE_JWT_SECRET="$JWT_SECRET" \
       SUPABASE_JWKS_URL="$jwks_url" \
       go run ./apps/api/cmd/api

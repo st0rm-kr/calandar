@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -70,6 +71,7 @@ func (h *Handler) HandleSendRequest(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("friend_request_sent requester_id=%s addressee_id=%s request_id=%d status=%s", userID, addresseeID, friendship.ID, friendship.Status)
 	respondOK(c, http.StatusCreated, friendship)
 }
 
@@ -96,6 +98,7 @@ func (h *Handler) act(c *gin.Context, fn func(ctx context.Context, actorID uuid.
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("friend_request_transition actor_id=%s request_id=%d status=%s", userID, requestID, friendship.Status)
 	respondOK(c, http.StatusOK, friendship)
 }
 
@@ -111,9 +114,11 @@ func (h *Handler) HandleDelete(c *gin.Context) {
 		return
 	}
 	if err := h.service.DeleteFriend(c.Request.Context(), userID, friendID); err != nil {
+		logger.Errorf("friend_delete_failed actor_id=%s friend_id=%s error=%q", userID, friendID, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
+	logger.Infof("friend_deleted actor_id=%s friend_id=%s", userID, friendID)
 	respondOK(c, http.StatusOK, gin.H{"deleted": true})
 }
 
@@ -128,6 +133,7 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	case errors.Is(err, ErrRequestNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "friend request not found")
 	default:
+		logger.Errorf("friend_service_error path=%s error=%q", c.Request.URL.Path, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

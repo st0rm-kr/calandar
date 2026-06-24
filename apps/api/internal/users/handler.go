@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -50,6 +51,7 @@ func (h *Handler) HandlePatchMe(c *gin.Context) {
 		return
 	}
 
+	logger.Infof("user_profile_updated user_id=%s", userID)
 	respondOK(c, http.StatusOK, profile)
 }
 
@@ -84,6 +86,7 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "profile not found")
 	default:
+		logger.Errorf("user_service_error path=%s error=%q", c.Request.URL.Path, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

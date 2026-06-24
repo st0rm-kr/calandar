@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -53,6 +54,7 @@ func (h *Handler) HandleCreate(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_created owner_id=%s group_id=%d", userID, group.ID)
 	respondOK(c, http.StatusCreated, group)
 }
 
@@ -98,6 +100,7 @@ func (h *Handler) HandleUpdate(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_updated actor_id=%s group_id=%d", userID, group.ID)
 	respondOK(c, http.StatusOK, group)
 }
 
@@ -114,6 +117,7 @@ func (h *Handler) HandleDissolve(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_dissolved actor_id=%s group_id=%d", userID, groupID)
 	respondOK(c, http.StatusOK, gin.H{"dissolved": true})
 }
 
@@ -134,6 +138,7 @@ func (h *Handler) HandleJoin(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_joined user_id=%s group_id=%d", userID, group.ID)
 	respondOK(c, http.StatusOK, group)
 }
 
@@ -160,18 +165,19 @@ func (h *Handler) HandleInvite(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_invite_created actor_id=%s group_id=%d invite_id=%d invitee_id=%s", userID, req.GroupID, invite.ID, inviteeID)
 	respondOK(c, http.StatusCreated, invite)
 }
 
 func (h *Handler) HandleAcceptInvite(c *gin.Context) {
-	h.actOnInvite(c, h.service.AcceptInvite)
+	h.actOnInvite(c, "accepted", h.service.AcceptInvite)
 }
 
 func (h *Handler) HandleRejectInvite(c *gin.Context) {
-	h.actOnInvite(c, h.service.RejectInvite)
+	h.actOnInvite(c, "rejected", h.service.RejectInvite)
 }
 
-func (h *Handler) actOnInvite(c *gin.Context, fn func(ctx context.Context, actorID uuid.UUID, inviteID int64) error) {
+func (h *Handler) actOnInvite(c *gin.Context, action string, fn func(ctx context.Context, actorID uuid.UUID, inviteID int64) error) {
 	userID, ok := h.actor(c)
 	if !ok {
 		return
@@ -184,6 +190,7 @@ func (h *Handler) actOnInvite(c *gin.Context, fn func(ctx context.Context, actor
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_invite_%s actor_id=%s invite_id=%d", action, userID, inviteID)
 	respondOK(c, http.StatusOK, gin.H{"ok": true})
 }
 
@@ -209,6 +216,7 @@ func (h *Handler) HandleLeave(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("group_left user_id=%s group_id=%d", userID, groupID)
 	respondOK(c, http.StatusOK, gin.H{"left": true})
 }
 
@@ -240,6 +248,7 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	case errors.Is(err, ErrInviteNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "group invite not found")
 	default:
+		logger.Errorf("group_service_error path=%s error=%q", c.Request.URL.Path, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

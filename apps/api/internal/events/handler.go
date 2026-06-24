@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -89,6 +90,7 @@ func (h *Handler) HandleCreate(c *gin.Context) {
 		return
 	}
 
+	logger.Infof("event_created owner_id=%s event_id=%d scope=%s type=%s", userID, event.ID, event.Scope, event.Type)
 	respondOK(c, http.StatusCreated, event)
 }
 
@@ -165,6 +167,14 @@ func (h *Handler) HandleRSVP(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof(
+		"event_rsvp_updated user_id=%s event_id=%d rsvp=%s add_to_calendar=%t conflict_count=%d",
+		userID,
+		eventID,
+		result.Participant.RSVP,
+		addToCalendar,
+		len(result.Conflicts),
+	)
 	respondOK(c, http.StatusOK, result)
 }
 
@@ -187,6 +197,7 @@ func (h *Handler) HandleDeleteRSVP(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("event_rsvp_removed user_id=%s event_id=%d", userID, eventID)
 	respondOK(c, http.StatusOK, result)
 }
 
@@ -206,6 +217,7 @@ func (h *Handler) HandleCancel(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("event_cancelled owner_id=%s event_id=%d", userID, event.ID)
 	respondOK(c, http.StatusOK, event)
 }
 
@@ -242,6 +254,7 @@ func (h *Handler) HandleInvite(c *gin.Context) {
 		h.respondServiceError(c, err)
 		return
 	}
+	logger.Infof("event_invites_created actor_id=%s event_id=%d requested_count=%d invited_count=%d", userID, eventID, len(inviteeIDs), len(invited))
 	respondOK(c, http.StatusOK, invited)
 }
 
@@ -263,6 +276,7 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "event not found")
 	default:
+		logger.Errorf("event_service_error path=%s error=%q", c.Request.URL.Path, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }

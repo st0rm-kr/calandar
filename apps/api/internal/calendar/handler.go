@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -39,6 +40,7 @@ func (h *Handler) HandleMonth(c *gin.Context) {
 
 	items, err := h.service.Month(c.Request.Context(), userID, from, to, filter)
 	if err != nil {
+		logger.Errorf("calendar_month_failed user_id=%s from=%s to=%s filter=%s error=%q", userID, from.Format(time.RFC3339), to.Format(time.RFC3339), filter, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}

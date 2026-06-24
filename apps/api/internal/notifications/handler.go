@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,6 +26,7 @@ func (h *Handler) HandleList(c *gin.Context) {
 	}
 	result, err := h.service.List(c.Request.Context(), userID)
 	if err != nil {
+		logger.Errorf("notification_list_failed user_id=%s error=%q", userID, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
@@ -47,9 +49,11 @@ func (h *Handler) HandleMarkRead(c *gin.Context) {
 			respondError(c, http.StatusNotFound, "not_found", "notification not found")
 			return
 		}
+		logger.Errorf("notification_mark_read_failed user_id=%s notification_id=%d error=%q", userID, id, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
+	logger.Infof("notification_marked_read user_id=%s notification_id=%d", userID, id)
 	respondOK(c, http.StatusOK, gin.H{"read": true})
 }
 
@@ -60,9 +64,11 @@ func (h *Handler) HandleMarkAllRead(c *gin.Context) {
 		return
 	}
 	if err := h.service.MarkAllRead(c.Request.Context(), userID); err != nil {
+		logger.Errorf("notification_mark_all_read_failed user_id=%s error=%q", userID, err)
 		respondError(c, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
+	logger.Infof("notifications_marked_all_read user_id=%s", userID)
 	respondOK(c, http.StatusOK, gin.H{"read": true})
 }
 
