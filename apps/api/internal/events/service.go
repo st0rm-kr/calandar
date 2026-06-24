@@ -21,6 +21,9 @@ var (
 	ErrInvalidEventTime  = errors.New("end_at must be after start_at")
 	ErrInvalidCapacity   = errors.New("capacity must be greater than 0")
 	ErrShareSlugConflict = errors.New("share slug conflict")
+	ErrInvalidRSVP       = errors.New("rsvp must be invited, going, not_going, or maybe")
+	ErrEventUnavailable  = errors.New("event is not available for rsvp")
+	ErrCapacityFull      = errors.New("event capacity is full")
 )
 
 type EventRepository interface {
@@ -29,6 +32,13 @@ type EventRepository interface {
 	FindByID(ctx context.Context, id int64) (Event, error)
 	CountGoing(ctx context.Context, eventID int64) (int, error)
 	ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, error)
+	Transaction(ctx context.Context, fn func(EventRepository) error) error
+	CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error)
+	UpsertParticipant(ctx context.Context, participant Participant) (Participant, error)
+	UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error
+	DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error
+	FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error)
+	Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error)
 }
 
 type Service struct {
@@ -87,6 +97,75 @@ func (s *Service) ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, err
 	return events, nil
 }
 
+func (s *Service) RSVP(ctx context.Context, userID uuid.UUID, eventID int64, input RSVPInput) (RSVPResult, error) {
+	if !validRSVP(input.RSVP) {
+		return RSVPResult{}, ErrInvalidRSVP
+	}
+	if input.Visibility == "" {
+		input.Visibility = "busy_only"
+	}
+	if !validVisibility(input.Visibility) {
+		return RSVPResult{}, ErrInvalidRSVP
+	}
+
+	var result RSVPResult
+	err := s.repo.Transaction(ctx, func(repo EventRepository) error {
+		event, err := repo.FindByID(ctx, eventID)
+		if err != nil {
+			return err
+		}
+		event = deriveExpired(event, s.now())
+		if event.Status != StatusActive {
+			return ErrEventUnavailable
+		}
+
+		if input.RSVP == RSVPGoing && event.Capacity != nil {
+			goingCount, err := repo.CountGoingForUpdateExcludingUser(ctx, event.ID, userID)
+			if err != nil {
+				return err
+			}
+			if goingCount >= *event.Capacity {
+				return ErrCapacityFull
+			}
+		}
+
+		participant, err := repo.UpsertParticipant(ctx, Participant{
+			EventID:       event.ID,
+			UserID:        userID,
+			RSVP:          input.RSVP,
+			Source:        ParticipantSourceSelf,
+			AddToCalendar: input.AddToCalendar,
+		})
+		if err != nil {
+			return err
+		}
+
+		if shouldLinkEventSchedule(input) {
+			if err := repo.UpsertEventSchedule(ctx, userID, event, input.Visibility); err != nil {
+				return err
+			}
+		} else if err := repo.DeleteEventSchedule(ctx, userID, event.ID); err != nil {
+			return err
+		}
+
+		conflicts, err := repo.FindConflicts(ctx, userID, event.StartAt, event.EndAt)
+		if err != nil {
+			return err
+		}
+		conflicts = filterEventSelfConflict(conflicts, event.ID)
+		result = RSVPResult{Participant: participant, Conflicts: conflicts}
+		return nil
+	})
+	if err != nil {
+		return RSVPResult{}, err
+	}
+	return result, nil
+}
+
+func (s *Service) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
+	return s.repo.Cancel(ctx, userID, eventID)
+}
+
 func buildEvent(ownerID uuid.UUID, input CreateEventInput) (Event, error) {
 	title := strings.TrimSpace(input.Title)
 	if title == "" || utf8.RuneCountInString(title) > 80 {
@@ -128,6 +207,39 @@ func buildEvent(ownerID uuid.UUID, input CreateEventInput) (Event, error) {
 		Capacity: input.Capacity,
 		Status:   StatusActive,
 	}, nil
+}
+
+func shouldLinkEventSchedule(input RSVPInput) bool {
+	return input.AddToCalendar && (input.RSVP == RSVPGoing || input.RSVP == RSVPMaybe)
+}
+
+func filterEventSelfConflict(conflicts []ScheduleConflict, eventID int64) []ScheduleConflict {
+	filtered := conflicts[:0]
+	for _, conflict := range conflicts {
+		if conflict.EventID != nil && *conflict.EventID == eventID {
+			continue
+		}
+		filtered = append(filtered, conflict)
+	}
+	return filtered
+}
+
+func validRSVP(rsvp string) bool {
+	switch rsvp {
+	case RSVPInvited, RSVPGoing, RSVPNotGoing, RSVPMaybe:
+		return true
+	default:
+		return false
+	}
+}
+
+func validVisibility(visibility string) bool {
+	switch visibility {
+	case "public", "busy_only", "private":
+		return true
+	default:
+		return false
+	}
 }
 
 func validEventType(eventType string) bool {

@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -154,9 +155,198 @@ func TestGetDetailDerivesExpiredStatusFromEndOrStartAt(t *testing.T) {
 	}
 }
 
+func TestRSVPGoingInsertsParticipantAndEventSchedule(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+	otherEventID := int64(99)
+	repo.conflicts = []ScheduleConflict{
+		{ID: 1, Title: event.Title, EventID: &event.ID},
+		{ID: 2, Title: "Existing schedule", EventID: &otherEventID},
+	}
+
+	result, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: true,
+		Visibility:    "busy_only",
+	})
+	if err != nil {
+		t.Fatalf("rsvp going: %v", err)
+	}
+
+	participant := repo.participants[participantKey(event.ID, userID)]
+	if participant.RSVP != RSVPGoing || participant.Source != ParticipantSourceSelf {
+		t.Fatalf("expected going self participant, got %+v", participant)
+	}
+	schedule := repo.schedules[participantKey(event.ID, userID)]
+	if schedule.EventID != event.ID || schedule.Title != event.Title || schedule.Visibility != "busy_only" {
+		t.Fatalf("expected linked event schedule, got %+v", schedule)
+	}
+	if result.Participant.RSVP != RSVPGoing {
+		t.Fatalf("expected result participant going, got %+v", result.Participant)
+	}
+	if len(result.Conflicts) != 1 || result.Conflicts[0].ID != 2 {
+		t.Fatalf("expected RSVP result to filter self event conflict, got %+v", result.Conflicts)
+	}
+}
+
+func TestRSVPMaybeInsertsParticipantAndEventSchedule(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+
+	_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPMaybe,
+		AddToCalendar: true,
+		Visibility:    "public",
+	})
+	if err != nil {
+		t.Fatalf("rsvp maybe: %v", err)
+	}
+
+	participant := repo.participants[participantKey(event.ID, userID)]
+	if participant.RSVP != RSVPMaybe {
+		t.Fatalf("expected maybe participant, got %+v", participant)
+	}
+	if _, ok := repo.schedules[participantKey(event.ID, userID)]; !ok {
+		t.Fatalf("expected event schedule to be linked")
+	}
+}
+
+func TestRSVPNotGoingDeletesExistingEventSchedule(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+	repo.schedules[participantKey(event.ID, userID)] = fakeSchedule{EventID: event.ID, UserID: userID}
+
+	_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPNotGoing,
+		AddToCalendar: true,
+	})
+	if err != nil {
+		t.Fatalf("rsvp not going: %v", err)
+	}
+
+	if _, ok := repo.schedules[participantKey(event.ID, userID)]; ok {
+		t.Fatalf("expected event schedule to be deleted")
+	}
+	if participant := repo.participants[participantKey(event.ID, userID)]; participant.RSVP != RSVPNotGoing {
+		t.Fatalf("expected not_going participant, got %+v", participant)
+	}
+}
+
+func TestRSVPAddToCalendarFalseStoresParticipantAndDeletesSchedule(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+	repo.schedules[participantKey(event.ID, userID)] = fakeSchedule{EventID: event.ID, UserID: userID}
+
+	_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: false,
+	})
+	if err != nil {
+		t.Fatalf("rsvp without calendar: %v", err)
+	}
+
+	if _, ok := repo.schedules[participantKey(event.ID, userID)]; ok {
+		t.Fatalf("expected event schedule to be deleted")
+	}
+	participant := repo.participants[participantKey(event.ID, userID)]
+	if participant.RSVP != RSVPGoing || participant.AddToCalendar {
+		t.Fatalf("expected going participant without calendar, got %+v", participant)
+	}
+}
+
+func TestRSVPCapacityFullReturnsDomainError(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	capacity := 1
+	event := activeEvent()
+	event.Capacity = &capacity
+	event = repo.seedEvent(event)
+	repo.participants[participantKey(event.ID, uuid.MustParse("bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"))] = Participant{
+		EventID: event.ID,
+		UserID:  uuid.MustParse("bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"),
+		RSVP:    RSVPGoing,
+		Source:  ParticipantSourceSelf,
+	}
+
+	_, err := service.RSVP(context.Background(), uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"), event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: true,
+	})
+
+	if !errors.Is(err, ErrCapacityFull) {
+		t.Fatalf("expected ErrCapacityFull, got %v", err)
+	}
+}
+
+func TestRSVPUpdatingExistingParticipantIsIdempotent(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+
+	for i := 0; i < 2; i++ {
+		_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+			RSVP:          RSVPGoing,
+			AddToCalendar: true,
+			Visibility:    "busy_only",
+		})
+		if err != nil {
+			t.Fatalf("rsvp attempt %d: %v", i+1, err)
+		}
+	}
+
+	if len(repo.participants) != 1 {
+		t.Fatalf("expected one participant row, got %d", len(repo.participants))
+	}
+	if len(repo.schedules) != 1 {
+		t.Fatalf("expected one schedule row, got %d", len(repo.schedules))
+	}
+}
+
+func TestRSVPInvitedParticipantChangingToGoingKeepsOneRow(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+	repo.participants[participantKey(event.ID, userID)] = Participant{
+		ID:      44,
+		EventID: event.ID,
+		UserID:  userID,
+		RSVP:    RSVPInvited,
+		Source:  ParticipantSourceInvited,
+	}
+
+	_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: true,
+	})
+	if err != nil {
+		t.Fatalf("rsvp invited to going: %v", err)
+	}
+
+	if len(repo.participants) != 1 {
+		t.Fatalf("expected one participant row, got %d", len(repo.participants))
+	}
+	participant := repo.participants[participantKey(event.ID, userID)]
+	if participant.ID != 44 || participant.RSVP != RSVPGoing || participant.Source != ParticipantSourceSelf {
+		t.Fatalf("expected existing participant updated to going self, got %+v", participant)
+	}
+}
+
 type fakeEventRepository struct {
 	events         map[int64]Event
 	eventsBySlug   map[string]int64
+	participants   map[string]Participant
+	schedules      map[string]fakeSchedule
+	conflicts      []ScheduleConflict
 	goingCounts    map[int64]int
 	createErrors   []error
 	createAttempts int
@@ -167,6 +357,8 @@ func newFakeEventRepository() *fakeEventRepository {
 	return &fakeEventRepository{
 		events:       map[int64]Event{},
 		eventsBySlug: map[string]int64{},
+		participants: map[string]Participant{},
+		schedules:    map[string]fakeSchedule{},
 		goingCounts:  map[int64]int{},
 		nextID:       1,
 	}
@@ -219,6 +411,65 @@ func (r *fakeEventRepository) ListMine(ctx context.Context, ownerID uuid.UUID) (
 	return mine, nil
 }
 
+func (r *fakeEventRepository) Transaction(ctx context.Context, fn func(EventRepository) error) error {
+	return fn(r)
+}
+
+func (r *fakeEventRepository) CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error) {
+	count := 0
+	for _, participant := range r.participants {
+		if participant.EventID == eventID && participant.UserID != userID && participant.RSVP == RSVPGoing && participant.DeletedAt == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (r *fakeEventRepository) UpsertParticipant(ctx context.Context, participant Participant) (Participant, error) {
+	key := participantKey(participant.EventID, participant.UserID)
+	existing, ok := r.participants[key]
+	if ok {
+		participant.ID = existing.ID
+	} else {
+		participant.ID = r.nextID
+		r.nextID++
+	}
+	r.participants[key] = participant
+	return participant, nil
+}
+
+func (r *fakeEventRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
+	key := participantKey(event.ID, userID)
+	existing := r.schedules[key]
+	if existing.Visibility == "" {
+		existing.Visibility = visibility
+	}
+	existing.EventID = event.ID
+	existing.UserID = userID
+	existing.Title = event.Title
+	r.schedules[key] = existing
+	return nil
+}
+
+func (r *fakeEventRepository) DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error {
+	delete(r.schedules, participantKey(eventID, userID))
+	return nil
+}
+
+func (r *fakeEventRepository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
+	return r.conflicts, nil
+}
+
+func (r *fakeEventRepository) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
+	event, ok := r.events[eventID]
+	if !ok {
+		return Event{}, gorm.ErrRecordNotFound
+	}
+	event.Status = StatusCancelled
+	r.events[eventID] = event
+	return event, nil
+}
+
 func (r *fakeEventRepository) seedEvent(event Event) Event {
 	if event.ID == 0 {
 		event.ID = r.nextID
@@ -227,6 +478,31 @@ func (r *fakeEventRepository) seedEvent(event Event) Event {
 	r.events[event.ID] = event
 	r.eventsBySlug[event.ShareSlug] = event.ID
 	return event
+}
+
+func activeEvent() Event {
+	endAt := time.Now().Add(2 * time.Hour).UTC()
+	return Event{
+		OwnerID:   uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8"),
+		Title:     "Climb",
+		Type:      "climbing",
+		Scope:     "personal",
+		StartAt:   time.Now().Add(time.Hour).UTC(),
+		EndAt:     &endAt,
+		Status:    StatusActive,
+		ShareSlug: "abc123def4",
+	}
+}
+
+func participantKey(eventID int64, userID uuid.UUID) string {
+	return fmt.Sprintf("%s:%d", userID.String(), eventID)
+}
+
+type fakeSchedule struct {
+	EventID    int64
+	UserID     uuid.UUID
+	Title      string
+	Visibility string
 }
 
 func ptrTime(t time.Time) *time.Time {

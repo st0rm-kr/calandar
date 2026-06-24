@@ -10,6 +10,14 @@ const (
 	StatusActive    = "active"
 	StatusCancelled = "cancelled"
 	StatusExpired   = "expired"
+
+	RSVPInvited  = "invited"
+	RSVPGoing    = "going"
+	RSVPNotGoing = "not_going"
+	RSVPMaybe    = "maybe"
+
+	ParticipantSourceSelf    = "self"
+	ParticipantSourceInvited = "invited"
 )
 
 type Event struct {
@@ -64,4 +72,26 @@ type CreateEventInput struct {
 	EndAt    *time.Time
 	Location *string
 	Capacity *int
+}
+
+type RSVPInput struct {
+	RSVP          string
+	AddToCalendar bool
+	Visibility    string
+}
+
+type ScheduleConflict struct {
+	ID         int64      `json:"id"`
+	Title      string     `json:"title"`
+	StartAt    time.Time  `json:"start_at"`
+	EndAt      *time.Time `json:"end_at"`
+	Location   *string    `json:"location"`
+	Visibility string     `json:"visibility"`
+	Source     string     `json:"source"`
+	EventID    *int64     `json:"event_id"`
+}
+
+type RSVPResult struct {
+	Participant Participant        `json:"participant"`
+	Conflicts   []ScheduleConflict `json:"conflicts"`
 }
