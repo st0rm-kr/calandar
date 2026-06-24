@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -341,6 +342,62 @@ func TestRSVPInvitedParticipantChangingToGoingKeepsOneRow(t *testing.T) {
 	}
 }
 
+func TestRSVPConcurrentGoingClaimsOnlyLastSeat(t *testing.T) {
+	repo := newConcurrentRSVPRepository()
+	service := NewService(repo)
+	event := activeEvent()
+	capacity := 1
+	event.Capacity = &capacity
+	event = repo.seedEvent(event)
+	users := []uuid.UUID{
+		uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"),
+		uuid.MustParse("bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb"),
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, len(users))
+	for i, userID := range users {
+		wg.Add(1)
+		go func(i int, userID uuid.UUID) {
+			defer wg.Done()
+			_, errs[i] = service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+				RSVP:          RSVPGoing,
+				AddToCalendar: true,
+			})
+		}(i, userID)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for concurrent RSVP calls")
+	}
+
+	successes := 0
+	capacityErrors := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrCapacityFull):
+			capacityErrors++
+		default:
+			t.Fatalf("unexpected RSVP error: %v", err)
+		}
+	}
+	if successes != 1 || capacityErrors != 1 {
+		t.Fatalf("expected one success and one capacity error, got successes=%d capacity_errors=%d errs=%v", successes, capacityErrors, errs)
+	}
+	if going := repo.goingParticipantCount(event.ID); going != 1 {
+		t.Fatalf("expected one going participant after concurrent RSVP, got %d", going)
+	}
+}
+
 type fakeEventRepository struct {
 	events         map[int64]Event
 	eventsBySlug   map[string]int64
@@ -395,6 +452,10 @@ func (r *fakeEventRepository) FindByID(ctx context.Context, id int64) (Event, er
 		return Event{}, gorm.ErrRecordNotFound
 	}
 	return event, nil
+}
+
+func (r *fakeEventRepository) FindByIDForUpdate(ctx context.Context, id int64) (Event, error) {
+	return r.FindByID(ctx, id)
 }
 
 func (r *fakeEventRepository) CountGoing(ctx context.Context, eventID int64) (int, error) {
@@ -507,4 +568,212 @@ type fakeSchedule struct {
 
 func ptrTime(t time.Time) *time.Time {
 	return &t
+}
+
+type concurrentRSVPRepository struct {
+	mu           sync.Mutex
+	eventLock    sync.Mutex
+	event        Event
+	participants map[string]Participant
+	nextID       int64
+	countArrived chan struct{}
+	counted      chan struct{}
+}
+
+type concurrentRSVPTransaction struct {
+	shared *concurrentRSVPRepository
+	locked bool
+}
+
+func newConcurrentRSVPRepository() *concurrentRSVPRepository {
+	return &concurrentRSVPRepository{
+		participants: map[string]Participant{},
+		nextID:       1,
+		countArrived: make(chan struct{}, 2),
+		counted:      make(chan struct{}, 2),
+	}
+}
+
+func (r *concurrentRSVPRepository) seedEvent(event Event) Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if event.ID == 0 {
+		event.ID = r.nextID
+		r.nextID++
+	}
+	r.event = event
+	return event
+}
+
+func (r *concurrentRSVPRepository) goingParticipantCount(eventID int64) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.countGoingLocked(eventID, uuid.Nil)
+}
+
+func (r *concurrentRSVPRepository) Create(ctx context.Context, event Event) (Event, error) {
+	return Event{}, nil
+}
+
+func (r *concurrentRSVPRepository) FindBySlug(ctx context.Context, slug string) (Event, error) {
+	return Event{}, gorm.ErrRecordNotFound
+}
+
+func (r *concurrentRSVPRepository) FindByID(ctx context.Context, id int64) (Event, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.event.ID != id {
+		return Event{}, gorm.ErrRecordNotFound
+	}
+	return r.event, nil
+}
+
+func (r *concurrentRSVPRepository) FindByIDForUpdate(ctx context.Context, id int64) (Event, error) {
+	r.eventLock.Lock()
+	defer r.eventLock.Unlock()
+	return r.FindByID(ctx, id)
+}
+
+func (r *concurrentRSVPRepository) CountGoing(ctx context.Context, eventID int64) (int, error) {
+	return 0, nil
+}
+
+func (r *concurrentRSVPRepository) ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, error) {
+	return nil, nil
+}
+
+func (r *concurrentRSVPRepository) Transaction(ctx context.Context, fn func(EventRepository) error) error {
+	tx := &concurrentRSVPTransaction{shared: r}
+	defer func() {
+		if tx.locked {
+			r.eventLock.Unlock()
+		}
+	}()
+	return fn(tx)
+}
+
+func (r *concurrentRSVPRepository) CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error) {
+	if err := waitForConcurrentSnapshot(ctx, r.countArrived); err != nil {
+		return 0, err
+	}
+	r.mu.Lock()
+	count := r.countGoingLocked(eventID, userID)
+	r.mu.Unlock()
+	if err := waitForConcurrentSnapshot(ctx, r.counted); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r *concurrentRSVPRepository) UpsertParticipant(ctx context.Context, participant Participant) (Participant, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if participant.ID == 0 {
+		participant.ID = r.nextID
+		r.nextID++
+	}
+	r.participants[participantKey(participant.EventID, participant.UserID)] = participant
+	return participant, nil
+}
+
+func (r *concurrentRSVPRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
+	return nil
+}
+
+func (r *concurrentRSVPRepository) DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error {
+	return nil
+}
+
+func (r *concurrentRSVPRepository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
+	return nil, nil
+}
+
+func (r *concurrentRSVPRepository) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
+	return Event{}, nil
+}
+
+func (r *concurrentRSVPRepository) countGoingLocked(eventID int64, excludeUserID uuid.UUID) int {
+	count := 0
+	for _, participant := range r.participants {
+		if participant.EventID == eventID && participant.UserID != excludeUserID && participant.RSVP == RSVPGoing && participant.DeletedAt == nil {
+			count++
+		}
+	}
+	return count
+}
+
+func waitForConcurrentSnapshot(ctx context.Context, ch chan struct{}) error {
+	ch <- struct{}{}
+	deadline := time.After(500 * time.Millisecond)
+	for {
+		if len(ch) == cap(ch) {
+			return nil
+		}
+		select {
+		case <-deadline:
+			return context.DeadlineExceeded
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
+func (tx *concurrentRSVPTransaction) Create(ctx context.Context, event Event) (Event, error) {
+	return tx.shared.Create(ctx, event)
+}
+
+func (tx *concurrentRSVPTransaction) FindBySlug(ctx context.Context, slug string) (Event, error) {
+	return tx.shared.FindBySlug(ctx, slug)
+}
+
+func (tx *concurrentRSVPTransaction) FindByID(ctx context.Context, id int64) (Event, error) {
+	return tx.shared.FindByID(ctx, id)
+}
+
+func (tx *concurrentRSVPTransaction) FindByIDForUpdate(ctx context.Context, id int64) (Event, error) {
+	tx.shared.eventLock.Lock()
+	tx.locked = true
+	return tx.shared.FindByID(ctx, id)
+}
+
+func (tx *concurrentRSVPTransaction) CountGoing(ctx context.Context, eventID int64) (int, error) {
+	return tx.shared.CountGoing(ctx, eventID)
+}
+
+func (tx *concurrentRSVPTransaction) ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, error) {
+	return tx.shared.ListMine(ctx, ownerID)
+}
+
+func (tx *concurrentRSVPTransaction) Transaction(ctx context.Context, fn func(EventRepository) error) error {
+	return tx.shared.Transaction(ctx, fn)
+}
+
+func (tx *concurrentRSVPTransaction) CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error) {
+	if tx.locked {
+		tx.shared.mu.Lock()
+		defer tx.shared.mu.Unlock()
+		return tx.shared.countGoingLocked(eventID, userID), nil
+	}
+	return tx.shared.CountGoingForUpdateExcludingUser(ctx, eventID, userID)
+}
+
+func (tx *concurrentRSVPTransaction) UpsertParticipant(ctx context.Context, participant Participant) (Participant, error) {
+	return tx.shared.UpsertParticipant(ctx, participant)
+}
+
+func (tx *concurrentRSVPTransaction) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
+	return tx.shared.UpsertEventSchedule(ctx, userID, event, visibility)
+}
+
+func (tx *concurrentRSVPTransaction) DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error {
+	return tx.shared.DeleteEventSchedule(ctx, userID, eventID)
+}
+
+func (tx *concurrentRSVPTransaction) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
+	return tx.shared.FindConflicts(ctx, userID, start, end)
+}
+
+func (tx *concurrentRSVPTransaction) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
+	return tx.shared.Cancel(ctx, userID, eventID)
 }

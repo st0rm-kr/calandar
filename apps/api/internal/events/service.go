@@ -30,6 +30,7 @@ type EventRepository interface {
 	Create(ctx context.Context, event Event) (Event, error)
 	FindBySlug(ctx context.Context, slug string) (Event, error)
 	FindByID(ctx context.Context, id int64) (Event, error)
+	FindByIDForUpdate(ctx context.Context, id int64) (Event, error)
 	CountGoing(ctx context.Context, eventID int64) (int, error)
 	ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, error)
 	Transaction(ctx context.Context, fn func(EventRepository) error) error
@@ -110,7 +111,7 @@ func (s *Service) RSVP(ctx context.Context, userID uuid.UUID, eventID int64, inp
 
 	var result RSVPResult
 	err := s.repo.Transaction(ctx, func(repo EventRepository) error {
-		event, err := repo.FindByID(ctx, eventID)
+		event, err := repo.FindByIDForUpdate(ctx, eventID)
 		if err != nil {
 			return err
 		}

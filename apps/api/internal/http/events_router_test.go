@@ -150,6 +150,10 @@ func (r *fakeEventRepository) FindByID(ctx context.Context, id int64) (events.Ev
 	return r.event, nil
 }
 
+func (r *fakeEventRepository) FindByIDForUpdate(ctx context.Context, id int64) (events.Event, error) {
+	return r.FindByID(ctx, id)
+}
+
 func (r *fakeEventRepository) CountGoing(ctx context.Context, eventID int64) (int, error) {
 	return r.goingCount, nil
 }

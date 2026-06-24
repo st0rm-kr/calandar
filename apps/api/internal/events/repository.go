@@ -43,6 +43,16 @@ func (r *Repository) FindByID(ctx context.Context, id int64) (Event, error) {
 	return event, err
 }
 
+func (r *Repository) FindByIDForUpdate(ctx context.Context, id int64) (Event, error) {
+	var event Event
+	err := r.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND deleted_at IS NULL", id).
+		First(&event).
+		Error
+	return event, err
+}
+
 func (r *Repository) CountGoing(ctx context.Context, eventID int64) (int, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
