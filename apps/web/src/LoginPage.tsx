@@ -42,7 +42,23 @@ export default function LoginPage() {
   }
 
   async function handleRegister() {
-    await runAuthAction(() => supabase.auth.signUp({ email, password }), '注册邮件已发送')
+    setStatus('loading')
+    setMessage('')
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) {
+      setStatus('error')
+      setMessage(error.message)
+      return
+    }
+
+    setStatus('success')
+    if (data.session) {
+      setMessage('注册成功，已自动登录')
+      navigate(redirect, { replace: true })
+      return
+    }
+
+    setMessage('注册邮件已发送，请先完成邮箱确认')
   }
 
   async function handleResetPassword() {

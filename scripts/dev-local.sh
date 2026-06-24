@@ -142,7 +142,9 @@ wait_for_http() {
 
 start_api() {
   local database_url
+  local jwks_url
   database_url="$(with_sslmode_disabled "$DB_URL")"
+  jwks_url="$API_URL/auth/v1/.well-known/jwks.json"
 
   log "Starting API on $BACKEND_URL"
   (
@@ -150,6 +152,7 @@ start_api() {
     API_ADDR="127.0.0.1:8080" \
       DATABASE_URL="$database_url" \
       SUPABASE_JWT_SECRET="$JWT_SECRET" \
+      SUPABASE_JWKS_URL="$jwks_url" \
       go run ./apps/api/cmd/api
   ) >"$API_LOG" 2>&1 &
   API_PID=$!

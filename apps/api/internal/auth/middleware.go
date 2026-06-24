@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 
@@ -70,6 +71,7 @@ func (v *Verifier) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
+			logAuthFailure(c, "missing bearer token", nil)
 			c.JSON(http.StatusUnauthorized, gin.H{"data": nil, "error": gin.H{"code": "unauthorized", "message": "missing bearer token"}})
 			c.Abort()
 			return
@@ -82,6 +84,7 @@ func (v *Verifier) Middleware() gin.HandlerFunc {
 			jwt.WithAudience("authenticated"),
 			jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
+			logAuthFailure(c, "invalid bearer token: "+authErrorMessage(err), token)
 			c.JSON(http.StatusUnauthorized, gin.H{"data": nil, "error": gin.H{"code": "unauthorized", "message": "invalid bearer token"}})
 			c.Abort()
 			return
@@ -89,6 +92,7 @@ func (v *Verifier) Middleware() gin.HandlerFunc {
 
 		sub, ok := claims["sub"].(string)
 		if !ok {
+			logAuthFailure(c, "token subject is missing", token)
 			c.JSON(http.StatusUnauthorized, gin.H{"data": nil, "error": gin.H{"code": "unauthorized", "message": "token subject is missing"}})
 			c.Abort()
 			return
@@ -96,6 +100,7 @@ func (v *Verifier) Middleware() gin.HandlerFunc {
 
 		userID, err := uuid.Parse(sub)
 		if err != nil {
+			logAuthFailure(c, "token subject is invalid", token)
 			c.JSON(http.StatusUnauthorized, gin.H{"data": nil, "error": gin.H{"code": "unauthorized", "message": "token subject is invalid"}})
 			c.Abort()
 			return
@@ -104,6 +109,31 @@ func (v *Verifier) Middleware() gin.HandlerFunc {
 		c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), userIDKey, userID))
 		c.Next()
 	}
+}
+
+func authErrorMessage(err error) string {
+	if err == nil {
+		return "token is not valid"
+	}
+	return err.Error()
+}
+
+func logAuthFailure(c *gin.Context, reason string, token *jwt.Token) {
+	alg := ""
+	kidPresent := false
+	if token != nil {
+		alg, _ = token.Header["alg"].(string)
+		_, kidPresent = token.Header["kid"]
+	}
+	log.Printf(
+		"auth_failure reason=%q method=%s path=%s alg=%s kid_present=%t client_ip=%s",
+		reason,
+		c.Request.Method,
+		c.Request.URL.Path,
+		alg,
+		kidPresent,
+		c.ClientIP(),
+	)
 }
 
 // RequireUser builds an HS256-only middleware. Retained for callers and tests
