@@ -12,6 +12,11 @@
   body {
     margin: 0;
     background-color: theme('colors.canvas');
+    background-image:
+      radial-gradient(circle at 12% 8%, rgba(255, 0, 80, 0.28), transparent 32rem),
+      radial-gradient(circle at 88% 18%, rgba(0, 242, 234, 0.24), transparent 30rem),
+      radial-gradient(circle at 72% 92%, rgba(255, 122, 26, 0.18), transparent 28rem);
+    background-attachment: fixed;
     color: theme('colors.ink');
     font-family: theme('fontFamily.sans');
     -webkit-font-smoothing: antialiased;
@@ -21,6 +26,53 @@
   h2,
   h3 {
     font-family: theme('fontFamily.display');
+  }
+}
+
+@layer utilities {
+  .neon-text {
+    text-shadow:
+      0 0 18px rgba(0, 242, 234, 0.38),
+      0 0 28px rgba(255, 0, 80, 0.22);
+  }
+
+  .timeline-reveal {
+    transform-origin: top center;
+    animation: timeline-reveal 280ms ease-out both;
+  }
+
+  .timeline-reveal > * {
+    animation: timeline-card-in 240ms ease-out both;
+  }
+
+  .timeline-reveal > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+
+  .timeline-reveal > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+}
+
+@keyframes timeline-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scaleY(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes timeline-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 

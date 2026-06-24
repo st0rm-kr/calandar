@@ -13,7 +13,7 @@ export function FloatingActionButton({
     <div className="pointer-events-none fixed bottom-6 right-6 z-30 lg:bottom-8 lg:right-8">
       <Link
         aria-label={label}
-        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-pop transition-colors duration-200 hover:bg-brand-ink lg:h-16 lg:w-16"
+        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-tangerine via-rose to-brand text-white shadow-pop transition-transform duration-200 hover:scale-105 lg:h-16 lg:w-16"
         to={to}
       >
         <svg

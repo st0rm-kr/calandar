@@ -4,31 +4,31 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas: '#F7F8FA',
-        surface: '#FFFFFF',
-        ink: '#14181F',
-        muted: '#5B6472',
-        hairline: '#E7E9EF',
+        canvas: '#050507',
+        surface: '#101219',
+        ink: '#F8FAFC',
+        muted: '#A3AAB8',
+        hairline: '#252A36',
         brand: {
-          DEFAULT: '#2F6BFF',
-          soft: '#EAF0FF',
-          ink: '#1B45B8',
+          DEFAULT: '#00F2EA',
+          soft: '#073236',
+          ink: '#7FFCF7',
         },
         grass: {
-          DEFAULT: '#13C37C',
-          soft: '#E2F8EE',
+          DEFAULT: '#3DFF88',
+          soft: '#0A2E1B',
         },
         tangerine: {
           DEFAULT: '#FF7A1A',
-          soft: '#FFEEDF',
+          soft: '#3A2108',
         },
         grape: {
-          DEFAULT: '#8B5CF6',
-          soft: '#F0EAFE',
+          DEFAULT: '#9B5CFF',
+          soft: '#23153D',
         },
         rose: {
-          DEFAULT: '#F43F5E',
-          soft: '#FFE7EC',
+          DEFAULT: '#FF0050',
+          soft: '#3A0719',
         },
       },
       fontFamily: {
@@ -36,10 +36,10 @@ export default {
         sans: ['Nunito', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        soft: '0 8px 24px rgba(20, 24, 31, 0.08)',
-        card: '0 6px 18px rgba(20, 24, 31, 0.06)',
-        pop: '0 14px 30px rgba(47, 107, 255, 0.32)',
-        tabbar: '0 10px 30px rgba(20, 24, 31, 0.12)',
+        soft: '0 18px 60px rgba(0, 0, 0, 0.32)',
+        card: '0 14px 44px rgba(0, 0, 0, 0.28)',
+        pop: '0 0 28px rgba(0, 242, 234, 0.35), 0 0 42px rgba(255, 0, 80, 0.25)',
+        tabbar: '0 20px 70px rgba(0, 0, 0, 0.45)',
       },
       borderRadius: {
         '4xl': '2rem',

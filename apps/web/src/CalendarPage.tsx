@@ -32,14 +32,20 @@ const filterOptions: Array<{ value: CalendarFilter; label: string }> = [
 
 const colorBlock: Record<string, string> = {
   blue: 'bg-brand',
-  green: 'bg-grass',
-  gray: 'bg-muted',
+  green: 'bg-tangerine',
+  gray: 'bg-rose',
 }
 
 const colorSoft: Record<string, string> = {
   blue: 'bg-brand-soft text-brand',
-  green: 'bg-grass-soft text-grass',
-  gray: 'bg-canvas text-muted',
+  green: 'bg-tangerine-soft text-tangerine',
+  gray: 'bg-rose-soft text-rose',
+}
+
+const colorHero: Record<string, string> = {
+  blue: 'bg-gradient-to-br from-brand via-rose to-tangerine',
+  green: 'bg-gradient-to-br from-tangerine via-rose to-grass',
+  gray: 'bg-gradient-to-br from-rose via-grape to-brand',
 }
 
 const attendeeInitials = 'ALMKYJRTSNDBOP'
@@ -252,13 +258,13 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <section className="min-h-[58vh] rounded-4xl border border-hairline bg-surface p-5 shadow-card lg:p-8">
+      <section className="min-h-[58vh] rounded-4xl border border-white/10 bg-surface/75 p-5 shadow-card backdrop-blur-xl lg:p-8">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-brand">
               Calendar
             </p>
-            <h1 className="mt-1 text-3xl font-bold tracking-tight lg:text-5xl">
+            <h1 className="neon-text mt-1 text-3xl font-bold tracking-tight lg:text-5xl">
               {format(month, 'yyyy 年 M 月')}
             </h1>
           </div>
@@ -267,8 +273,8 @@ export default function CalendarPage() {
               <button
                 className={`cursor-pointer rounded-full px-4 py-2 text-sm font-bold transition-colors duration-200 ${
                   filter === option.value
-                    ? 'bg-brand text-white'
-                    : 'bg-canvas text-muted hover:text-ink'
+                    ? 'bg-gradient-to-r from-brand to-rose text-white shadow-[0_0_24px_rgba(0,242,234,0.25)]'
+                    : 'bg-white/5 text-muted hover:bg-white/10 hover:text-ink'
                 }`}
                 key={option.value}
                 onClick={() => setFilter(option.value)}
@@ -280,7 +286,7 @@ export default function CalendarPage() {
             <span className="mx-1 h-8 w-px bg-hairline" />
             <button
               aria-label="上个月"
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-canvas text-muted transition-colors duration-200 hover:text-ink"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/5 text-muted transition-colors duration-200 hover:bg-white/10 hover:text-ink"
               onClick={() => shiftMonth(-1)}
               type="button"
             >
@@ -300,7 +306,7 @@ export default function CalendarPage() {
             </button>
             <button
               aria-label="下个月"
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-canvas text-muted transition-colors duration-200 hover:text-ink"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/5 text-muted transition-colors duration-200 hover:bg-white/10 hover:text-ink"
               onClick={() => shiftMonth(1)}
               type="button"
             >
@@ -347,9 +353,9 @@ export default function CalendarPage() {
               <button
                 className={`min-h-20 cursor-pointer rounded-3xl border p-3 text-left transition-all duration-200 lg:min-h-28 xl:min-h-32 ${
                   selected
-                    ? 'border-brand bg-brand text-white shadow-pop'
+                    ? 'border-transparent bg-gradient-to-br from-rose via-tangerine to-brand text-white shadow-pop'
                     : inMonth
-                      ? 'border-hairline bg-canvas/60 hover:-translate-y-0.5 hover:bg-surface hover:shadow-card'
+                      ? 'border-white/10 bg-white/[0.045] hover:-translate-y-0.5 hover:border-brand/40 hover:bg-white/10 hover:shadow-card'
                       : 'border-transparent bg-transparent text-muted/40'
                 }`}
                 key={key}
@@ -369,7 +375,7 @@ export default function CalendarPage() {
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                         selected
                           ? 'bg-white/20 text-white'
-                          : 'bg-surface text-muted'
+                          : 'bg-white/10 text-muted'
                       }`}
                     >
                       {dayItems.length}
@@ -397,139 +403,151 @@ export default function CalendarPage() {
       <section className="space-y-4">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-rose">
               Feed
             </p>
-            <h2 className="text-2xl font-bold tracking-tight">时间流</h2>
+            <h2 className="neon-text text-2xl font-bold tracking-tight">
+              时间流
+            </h2>
           </div>
           <p className="text-sm font-semibold text-muted">
-            点击上方日期或下方时间点，展开当天安排。
+            点击日期后，活动会从对应时间点向下展开。
           </p>
         </div>
 
         {loading ? <LoadingState /> : null}
 
-        <div className="overflow-x-auto rounded-4xl border border-hairline bg-surface shadow-card">
-          <div className="relative flex min-w-max items-center gap-3 px-8 py-8">
-            <div className="absolute left-8 right-8 top-1/2 h-1 rounded-full bg-hairline" />
-            {timelineDays.map((entry) => {
-              const selected = entry.key === selectedKey
-              const hasItems = entry.items.length > 0
-              const colors = Array.from(
-                new Set(entry.items.map((item) => item.color)),
-              )
-              return (
-                <button
-                  className="relative z-10 flex w-28 shrink-0 cursor-pointer flex-col items-center gap-3 text-center"
-                  key={entry.key}
-                  onClick={() => handleSelectDay(entry.date)}
-                  ref={(node) => {
-                    if (node) {
-                      timelineRefs.current.set(entry.key, node)
-                    } else {
-                      timelineRefs.current.delete(entry.key)
-                    }
-                  }}
-                  type="button"
-                >
-                  <span
-                    className={`text-xs font-bold ${
-                      selected ? 'text-brand' : 'text-muted'
-                    }`}
-                  >
-                    {format(entry.date, 'M/d')}
-                  </span>
-                  <span
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border-4 transition-all duration-200 ${
-                      selected
-                        ? 'scale-110 border-brand bg-brand text-white shadow-pop'
-                        : hasItems
-                          ? 'border-surface bg-surface shadow-card'
-                          : 'border-surface bg-hairline'
-                    }`}
-                  >
-                    {hasItems ? (
-                      <span className="flex -space-x-1">
-                        {colors.slice(0, 3).map((color) => (
-                          <span
-                            className={`h-3 w-3 rounded-full ${
-                              selected
-                                ? 'bg-white'
-                                : colorBlock[color] ?? 'bg-brand'
-                            }`}
-                            key={color}
-                          />
-                        ))}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span
-                    className={`text-xs font-bold ${
-                      hasItems ? 'text-ink' : 'text-muted/60'
-                    }`}
-                  >
-                    周{weekdayLabels[entry.date.getDay()]}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
         <div
-          className={`rounded-4xl border border-hairline bg-surface p-5 shadow-card transition-shadow duration-500 lg:p-6 ${
+          className={`overflow-hidden rounded-4xl border border-white/10 bg-surface/80 shadow-card backdrop-blur-xl transition-shadow duration-500 ${
             flashKey === selectedKey
               ? 'ring-2 ring-brand ring-offset-4 ring-offset-canvas'
               : ''
           }`}
         >
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted">
-                展开详情
-              </p>
-              <h3 className="text-2xl font-bold tracking-tight">
-                {dayHeading(selectedDay)}
-              </h3>
+          <div className="overflow-x-auto">
+            <div className="relative flex min-w-max items-start gap-3 px-8 pb-4 pt-8">
+              <div className="absolute left-8 right-8 top-[4.35rem] h-1 rounded-full bg-gradient-to-r from-rose via-tangerine to-brand opacity-70" />
+              {timelineDays.map((entry) => {
+                const selected = entry.key === selectedKey
+                const hasItems = entry.items.length > 0
+                const colors = Array.from(
+                  new Set(entry.items.map((item) => item.color)),
+                )
+                return (
+                  <button
+                    className="relative z-10 flex w-28 shrink-0 cursor-pointer flex-col items-center gap-3 text-center"
+                    key={entry.key}
+                    onClick={() => handleSelectDay(entry.date)}
+                    ref={(node) => {
+                      if (node) {
+                        timelineRefs.current.set(entry.key, node)
+                      } else {
+                        timelineRefs.current.delete(entry.key)
+                      }
+                    }}
+                    type="button"
+                  >
+                    <span
+                      className={`text-xs font-bold ${
+                        selected ? 'text-tangerine' : 'text-muted'
+                      }`}
+                    >
+                      {format(entry.date, 'M/d')}
+                    </span>
+                    <span
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border-4 transition-all duration-200 ${
+                        selected
+                          ? 'scale-110 border-tangerine bg-gradient-to-br from-rose via-tangerine to-brand text-white shadow-pop'
+                          : hasItems
+                            ? 'border-white/20 bg-black shadow-[0_0_18px_rgba(0,242,234,0.2)]'
+                            : 'border-white/10 bg-white/10'
+                      }`}
+                    >
+                      {hasItems ? (
+                        <span className="flex -space-x-1">
+                          {colors.slice(0, 3).map((color) => (
+                            <span
+                              className={`h-3 w-3 rounded-full ${
+                                selected
+                                  ? 'bg-white'
+                                  : colorBlock[color] ?? 'bg-brand'
+                              }`}
+                              key={color}
+                            />
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span
+                      className={`text-xs font-bold ${
+                        hasItems ? 'text-ink' : 'text-muted/60'
+                      }`}
+                    >
+                      周{weekdayLabels[entry.date.getDay()]}
+                    </span>
+                    {selected ? (
+                      <span className="h-8 w-px bg-gradient-to-b from-tangerine to-transparent" />
+                    ) : (
+                      <span className="h-8" />
+                    )}
+                  </button>
+                )
+              })}
             </div>
-            <span className="rounded-full bg-canvas px-3 py-1 text-sm font-bold text-muted">
-              {selectedItems.length} 项
-            </span>
           </div>
 
-          {selectedItems.length === 0 ? (
-            <div className="mt-5">
-              <EmptyState
-                title="这一天还没有安排"
-                description="可以从右下角发起一个新的 Hangout。"
-                action={
-                  <Link
-                    className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white transition-colors duration-200 hover:bg-brand-ink"
-                    to="/events/new"
-                  >
-                    发起 Hangout
-                  </Link>
-                }
-              />
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-4 xl:grid-cols-2">
-              {selectedItems.map((item) =>
-                item.kind === 'event' ? (
-                  <HangoutCard
-                    item={item}
-                    key={`event-${item.id}`}
-                    onRSVP={quickRSVP}
-                    submitting={
-                      item.event_id ? submitting.has(item.event_id) : false
-                    }
-                  />
-                ) : (
-                  <ScheduleCard item={item} key={`schedule-${item.id}`} />
-                ),
+          <div className="border-t border-white/10 bg-black/25 px-5 pb-5 pt-4 lg:px-6 lg:pb-6">
+            <div
+              className="timeline-reveal"
+              key={selectedKey}
+            >
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-[0.2em] text-tangerine">
+                    Node detail
+                  </p>
+                  <h3 className="text-2xl font-bold tracking-tight">
+                    {dayHeading(selectedDay)}
+                  </h3>
+                </div>
+                <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-bold text-muted">
+                  {selectedItems.length} 项
+                </span>
+              </div>
+
+              {selectedItems.length === 0 ? (
+                <EmptyState
+                  title="这一天还没有安排"
+                  description="可以从右下角发起一个新的 Hangout。"
+                  action={
+                    <Link
+                      className="rounded-full bg-gradient-to-r from-tangerine via-rose to-brand px-5 py-2.5 text-sm font-bold text-white shadow-pop transition-transform duration-200 hover:scale-105"
+                      to="/events/new"
+                    >
+                      发起 Hangout
+                    </Link>
+                  }
+                />
+              ) : (
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {selectedItems.map((item) =>
+                    item.kind === 'event' ? (
+                      <HangoutCard
+                        item={item}
+                        key={`event-${item.id}`}
+                        onRSVP={quickRSVP}
+                        submitting={
+                          item.event_id ? submitting.has(item.event_id) : false
+                        }
+                      />
+                    ) : (
+                      <ScheduleCard item={item} key={`schedule-${item.id}`} />
+                    ),
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       </section>
     </div>
@@ -543,14 +561,15 @@ type HangoutCardProps = {
 }
 
 function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
-  const block = colorBlock[item.color] ?? 'bg-brand'
+  const block = colorHero[item.color] ?? colorHero.blue
   const soft = colorSoft[item.color] ?? colorSoft.blue
   const attendees = derivedAttendees(item)
   return (
-    <article className="overflow-hidden rounded-3xl border border-hairline bg-surface shadow-card">
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-black/45 shadow-card backdrop-blur">
       <div className={`relative h-40 ${block} p-5 text-white`}>
-        <div className="absolute right-5 top-5 h-16 w-16 rounded-3xl bg-white/20" />
+        <div className="absolute right-5 top-5 h-16 w-16 rounded-3xl bg-white/20 blur-[1px]" />
         <div className="absolute bottom-5 right-16 h-10 w-24 rounded-full bg-white/15" />
+        <div className="absolute -bottom-8 -left-6 h-24 w-24 rounded-full bg-black/20 blur-xl" />
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">
           Hangout
         </p>
@@ -572,7 +591,7 @@ function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
           <AvatarStack people={attendees} />
           <div className="flex items-center gap-2">
             <button
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-bold text-white transition-colors duration-200 hover:bg-brand-ink disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-tangerine via-rose to-brand px-4 py-2 text-sm font-bold text-white shadow-pop transition-transform duration-200 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={submitting}
               onClick={() => onRSVP(item, true)}
               type="button"
@@ -610,8 +629,8 @@ function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
 
 function ScheduleCard({ item }: { item: CalendarItem }) {
   return (
-    <article className="overflow-hidden rounded-3xl border border-hairline bg-surface shadow-card">
-      <div className="h-3 bg-grass" />
+    <article className="overflow-hidden rounded-3xl border border-white/10 bg-black/45 shadow-card backdrop-blur">
+      <div className="h-3 bg-gradient-to-r from-tangerine via-grass to-brand" />
       <div className="p-5">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
           Schedule

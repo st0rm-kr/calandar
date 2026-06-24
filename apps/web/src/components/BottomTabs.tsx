@@ -90,10 +90,10 @@ export function BottomTabs({ inboxCount = 0 }: BottomTabsProps) {
   const location = useLocation()
 
   return (
-    <nav className="fixed inset-y-0 left-0 z-20 flex w-20 flex-col items-center border-r border-hairline bg-surface/95 px-2 py-5 shadow-tabbar backdrop-blur lg:w-24">
+    <nav className="fixed inset-y-0 left-0 z-20 flex w-20 flex-col items-center border-r border-white/10 bg-black/70 px-2 py-5 shadow-tabbar backdrop-blur-xl lg:w-24">
       <Link
         aria-label="Hangout 首页"
-        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand font-display text-xl font-bold text-white shadow-pop"
+        className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-brand via-rose to-tangerine font-display text-xl font-bold text-white shadow-pop"
         to="/"
       >
         H
@@ -105,7 +105,9 @@ export function BottomTabs({ inboxCount = 0 }: BottomTabsProps) {
           return (
             <Link
               className={`relative flex w-full cursor-pointer flex-col items-center gap-1 rounded-2xl px-2 py-3 text-[11px] font-bold transition-colors duration-200 ${
-                active ? 'bg-brand-soft text-brand' : 'text-muted hover:bg-canvas hover:text-ink'
+                active
+                  ? 'bg-white text-canvas shadow-[0_0_22px_rgba(0,242,234,0.24),0_0_28px_rgba(255,0,80,0.16)]'
+                  : 'text-muted hover:bg-white/10 hover:text-ink'
               }`}
               key={tab.to}
               to={tab.to}
