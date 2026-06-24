@@ -103,6 +103,20 @@ export async function inviteToGroup(
   })
 }
 
+export async function acceptGroupInvite(inviteID: number): Promise<void> {
+  await apiRequest<unknown>(`/api/group-invites/${inviteID}/accept`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+  })
+}
+
+export async function rejectGroupInvite(inviteID: number): Promise<void> {
+  await apiRequest<unknown>(`/api/group-invites/${inviteID}/reject`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+  })
+}
+
 export async function leaveGroup(
   groupID: number,
   userID: string,

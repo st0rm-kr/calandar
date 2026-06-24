@@ -6,8 +6,10 @@ import EventDetailPage from './EventDetailPage'
 import FriendsPage from './FriendsPage'
 import GroupDetailPage from './GroupDetailPage'
 import GroupsPage from './GroupsPage'
+import InboxPage from './InboxPage'
 import LoginPage from './LoginPage'
 import NewEventPage from './NewEventPage'
+import NotificationsPage from './NotificationsPage'
 import ProfilePage from './ProfilePage'
 import ScheduleEditorPage from './ScheduleEditorPage'
 import './index.css'
@@ -45,6 +47,12 @@ function HomePage() {
           <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/groups">
             群组
           </Link>
+          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/inbox">
+            收件箱
+          </Link>
+          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/notifications">
+            通知
+          </Link>
           <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/profile">
             个人页
           </Link>
@@ -68,6 +76,8 @@ export default function App() {
       <Route path="/friends" element={<FriendsPage />} />
       <Route path="/groups" element={<GroupsPage />} />
       <Route path="/groups/:id" element={<GroupDetailPage />} />
+      <Route path="/inbox" element={<InboxPage />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
     </Routes>
   )
 }
