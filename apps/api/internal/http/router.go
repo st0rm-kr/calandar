@@ -2,6 +2,7 @@ package http
 
 import (
 	"github.com/bytedance/calandar/apps/api/internal/auth"
+	"github.com/bytedance/calandar/apps/api/internal/calendar"
 	"github.com/bytedance/calandar/apps/api/internal/config"
 	"github.com/bytedance/calandar/apps/api/internal/events"
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
@@ -16,6 +17,7 @@ type Dependencies struct {
 	EventService    *events.Service
 	UserService     *users.Service
 	ScheduleService *schedules.Service
+	CalendarService *calendar.Service
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -58,6 +60,13 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.GET("/schedules/conflicts", scheduleHandler.HandleConflicts)
 	authenticated.PATCH("/schedules/:id", scheduleHandler.HandleUpdate)
 	authenticated.DELETE("/schedules/:id", scheduleHandler.HandleDelete)
+
+	calendarService := deps.CalendarService
+	if calendarService == nil {
+		calendarService = calendar.NewService(schedules.NewRepository(deps.DB))
+	}
+	calendarHandler := calendar.NewHandler(calendarService)
+	authenticated.GET("/calendar", calendarHandler.HandleMonth)
 
 	return router
 }
