@@ -6,6 +6,8 @@ import EventDetailPage from './EventDetailPage'
 import { apiGet } from './lib/api'
 import type { EventDetail } from './lib/events'
 import { getEventBySlug } from './lib/events'
+import { getCalendar } from './lib/calendar'
+import { checkConflicts } from './lib/schedules'
 
 vi.mock('./lib/api', () => ({
   apiGet: vi.fn(),
@@ -16,6 +18,16 @@ vi.mock('./lib/events', () => ({
   rsvpEvent: vi.fn(),
   cancelEvent: vi.fn(),
   listMine: vi.fn(),
+}))
+vi.mock('./lib/calendar', () => ({
+  getCalendar: vi.fn(),
+}))
+vi.mock('./lib/schedules', () => ({
+  listSchedules: vi.fn(),
+  createSchedule: vi.fn(),
+  updateSchedule: vi.fn(),
+  deleteSchedule: vi.fn(),
+  checkConflicts: vi.fn(),
 }))
 vi.mock('./lib/supabase', () => ({
   supabase: {
@@ -30,6 +42,8 @@ vi.mock('./lib/supabase', () => ({
 
 const mockedApiGet = vi.mocked(apiGet)
 const mockedGetEventBySlug = vi.mocked(getEventBySlug)
+const mockedGetCalendar = vi.mocked(getCalendar)
+const mockedCheckConflicts = vi.mocked(checkConflicts)
 
 function createEventDetail(slug: string, title: string): EventDetail {
   return {
@@ -192,5 +206,44 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: '新的活动' })).toBeInTheDocument()
     })
     expect(screen.queryByRole('heading', { name: '过期活动' })).not.toBeInTheDocument()
+  })
+
+  it('renders the calendar route with items', async () => {
+    mockedGetCalendar.mockResolvedValueOnce([
+      {
+        id: 1,
+        kind: 'schedule',
+        title: '晨跑',
+        start_at: '2026-06-15T01:00:00Z',
+        end_at: '2026-06-15T02:00:00Z',
+        location: null,
+        visibility: 'public',
+        color: 'green',
+        has_conflict: false,
+        event_id: null,
+      },
+    ])
+
+    renderApp('/calendar')
+
+    await waitFor(() => {
+      expect(mockedGetCalendar).toHaveBeenCalled()
+    })
+    expect(screen.getByText('群活动')).toBeInTheDocument()
+    expect(screen.getByText('个人日程')).toBeInTheDocument()
+  })
+
+  it('renders the new schedule editor route', async () => {
+    mockedCheckConflicts.mockResolvedValue([])
+
+    renderApp('/schedules/new')
+
+    expect(screen.getByRole('heading', { name: '新建日程' })).toBeInTheDocument()
+    expect(screen.getByLabelText('标题')).toBeInTheDocument()
+    expect(screen.getByLabelText('开始时间')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '保存日程' })).toBeEnabled()
+    })
   })
 })
