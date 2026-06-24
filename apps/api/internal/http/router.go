@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/calandar/apps/api/internal/events"
 	"github.com/bytedance/calandar/apps/api/internal/friends"
 	"github.com/bytedance/calandar/apps/api/internal/groups"
+	"github.com/bytedance/calandar/apps/api/internal/notifications"
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
 	"github.com/bytedance/calandar/apps/api/internal/users"
 	"github.com/gin-gonic/gin"
@@ -14,14 +15,15 @@ import (
 )
 
 type Dependencies struct {
-	Config          config.Config
-	DB              *gorm.DB
-	EventService    *events.Service
-	UserService     *users.Service
-	ScheduleService *schedules.Service
-	CalendarService *calendar.Service
-	FriendService   *friends.Service
-	GroupService    *groups.Service
+	Config              config.Config
+	DB                  *gorm.DB
+	EventService        *events.Service
+	UserService         *users.Service
+	ScheduleService     *schedules.Service
+	CalendarService     *calendar.Service
+	FriendService       *friends.Service
+	GroupService        *groups.Service
+	NotificationService *notifications.Service
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -105,6 +107,15 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/group-invites", groupHandler.HandleInvite)
 	authenticated.POST("/group-invites/:id/accept", groupHandler.HandleAcceptInvite)
 	authenticated.POST("/group-invites/:id/reject", groupHandler.HandleRejectInvite)
+
+	notificationService := deps.NotificationService
+	if notificationService == nil {
+		notificationService = notifications.NewService(notifications.NewRepository(deps.DB))
+	}
+	notificationHandler := notifications.NewHandler(notificationService)
+	authenticated.GET("/notifications", notificationHandler.HandleList)
+	authenticated.POST("/notifications/read-all", notificationHandler.HandleMarkAllRead)
+	authenticated.POST("/notifications/:id/read", notificationHandler.HandleMarkRead)
 
 	return router
 }
