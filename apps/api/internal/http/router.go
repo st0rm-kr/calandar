@@ -7,6 +7,7 @@ import (
 	"github.com/bytedance/calandar/apps/api/internal/events"
 	"github.com/bytedance/calandar/apps/api/internal/friends"
 	"github.com/bytedance/calandar/apps/api/internal/groups"
+	"github.com/bytedance/calandar/apps/api/internal/inbox"
 	"github.com/bytedance/calandar/apps/api/internal/notifications"
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
 	"github.com/bytedance/calandar/apps/api/internal/users"
@@ -24,6 +25,7 @@ type Dependencies struct {
 	FriendService       *friends.Service
 	GroupService        *groups.Service
 	NotificationService *notifications.Service
+	InboxService        *inbox.Service
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -116,6 +118,13 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.GET("/notifications", notificationHandler.HandleList)
 	authenticated.POST("/notifications/read-all", notificationHandler.HandleMarkAllRead)
 	authenticated.POST("/notifications/:id/read", notificationHandler.HandleMarkRead)
+
+	inboxService := deps.InboxService
+	if inboxService == nil {
+		inboxService = inbox.NewService(inbox.NewRepository(deps.DB))
+	}
+	inboxHandler := inbox.NewHandler(inboxService)
+	authenticated.GET("/inbox", inboxHandler.HandleList)
 
 	return router
 }
