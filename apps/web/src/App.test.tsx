@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import EventDetailPage from './EventDetailPage'
 import { apiGet } from './lib/api'
+import type { EventDetail } from './lib/events'
 import { getEventBySlug } from './lib/events'
 
 vi.mock('./lib/api', () => ({
@@ -29,11 +31,52 @@ vi.mock('./lib/supabase', () => ({
 const mockedApiGet = vi.mocked(apiGet)
 const mockedGetEventBySlug = vi.mocked(getEventBySlug)
 
+function createEventDetail(slug: string, title: string): EventDetail {
+  return {
+    event: {
+      id: 12,
+      title,
+      type: 'climbing',
+      scope: 'personal',
+      start_at: '2026-06-24T12:00:00Z',
+      end_at: null,
+      location: '岩馆',
+      capacity: 6,
+      status: 'active',
+      share_slug: slug,
+    },
+    going_count: 2,
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve
+  })
+  return { promise, resolve }
+}
+
 function renderApp(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <App />
     </MemoryRouter>,
+  )
+}
+
+function EventRouteHarness() {
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <button onClick={() => navigate('/events/second')} type="button">
+        切换活动
+      </button>
+      <Routes>
+        <Route path="/events/:slug" element={<EventDetailPage />} />
+      </Routes>
+    </>
   )
 }
 
@@ -102,21 +145,9 @@ describe('App', () => {
   })
 
   it('loads the event detail route by slug', async () => {
-    mockedGetEventBySlug.mockResolvedValueOnce({
-      event: {
-        id: 12,
-        title: '周末攀岩',
-        type: 'climbing',
-        scope: 'personal',
-        start_at: '2026-06-24T12:00:00Z',
-        end_at: null,
-        location: '岩馆',
-        capacity: 6,
-        status: 'active',
-        share_slug: 'abc123def4',
-      },
-      going_count: 2,
-    })
+    mockedGetEventBySlug.mockResolvedValueOnce(
+      createEventDetail('abc123def4', '周末攀岩'),
+    )
 
     renderApp('/events/abc123def4')
 
@@ -124,5 +155,42 @@ describe('App', () => {
       expect(screen.getByRole('heading', { name: '周末攀岩' })).toBeInTheDocument()
     })
     expect(mockedGetEventBySlug).toHaveBeenCalledWith('abc123def4')
+  })
+
+  it('ignores stale event detail requests after route changes', async () => {
+    const firstRequest = deferred<EventDetail>()
+    const secondRequest = deferred<EventDetail>()
+    mockedGetEventBySlug
+      .mockReturnValueOnce(firstRequest.promise)
+      .mockReturnValueOnce(secondRequest.promise)
+
+    render(
+      <MemoryRouter initialEntries={['/events/first']}>
+        <EventRouteHarness />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(mockedGetEventBySlug).toHaveBeenCalledWith('first')
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '切换活动' }))
+
+    await waitFor(() => {
+      expect(mockedGetEventBySlug).toHaveBeenCalledWith('second')
+    })
+
+    secondRequest.resolve(createEventDetail('second', '新的活动'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '新的活动' })).toBeInTheDocument()
+    })
+
+    firstRequest.resolve(createEventDetail('first', '过期活动'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '新的活动' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: '过期活动' })).not.toBeInTheDocument()
   })
 })

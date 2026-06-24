@@ -31,15 +31,27 @@ export default function EventDetailPage() {
       return
     }
 
+    let isCurrentRequest = true
+
     getEventBySlug(slug)
       .then((data) => {
+        if (!isCurrentRequest) {
+          return
+        }
         setDetail(data)
         setError('')
       })
       .catch((err: unknown) => {
+        if (!isCurrentRequest) {
+          return
+        }
         setDetail(null)
         setError(err instanceof Error ? err.message : '无法加载活动')
       })
+
+    return () => {
+      isCurrentRequest = false
+    }
   }, [slug])
 
   const isFull = useMemo(() => {
