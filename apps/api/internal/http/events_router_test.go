@@ -182,6 +182,10 @@ func (r *fakeEventRepository) DeleteEventSchedule(ctx context.Context, userID uu
 	return nil
 }
 
+func (r *fakeEventRepository) DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error {
+	return nil
+}
+
 func (r *fakeEventRepository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]events.ScheduleConflict, error) {
 	return nil, nil
 }

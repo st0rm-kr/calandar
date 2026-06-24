@@ -38,6 +38,7 @@ type EventRepository interface {
 	UpsertParticipant(ctx context.Context, participant Participant) (Participant, error)
 	UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error
 	DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error
+	DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error
 	FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error)
 	Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error)
 }
@@ -164,7 +165,22 @@ func (s *Service) RSVP(ctx context.Context, userID uuid.UUID, eventID int64, inp
 }
 
 func (s *Service) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
-	return s.repo.Cancel(ctx, userID, eventID)
+	var event Event
+	err := s.repo.Transaction(ctx, func(repo EventRepository) error {
+		cancelled, err := repo.Cancel(ctx, userID, eventID)
+		if err != nil {
+			return err
+		}
+		if err := repo.DeleteEventSchedulesForEvent(ctx, eventID); err != nil {
+			return err
+		}
+		event = cancelled
+		return nil
+	})
+	if err != nil {
+		return Event{}, err
+	}
+	return event, nil
 }
 
 func buildEvent(ownerID uuid.UUID, input CreateEventInput) (Event, error) {
@@ -227,7 +243,7 @@ func filterEventSelfConflict(conflicts []ScheduleConflict, eventID int64) []Sche
 
 func validRSVP(rsvp string) bool {
 	switch rsvp {
-	case RSVPInvited, RSVPGoing, RSVPNotGoing, RSVPMaybe:
+	case RSVPGoing, RSVPNotGoing, RSVPMaybe:
 		return true
 	default:
 		return false

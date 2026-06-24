@@ -342,6 +342,48 @@ func TestRSVPInvitedParticipantChangingToGoingKeepsOneRow(t *testing.T) {
 	}
 }
 
+func TestRSVPRejectsUserSubmittedInvited(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+
+	_, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPInvited,
+		AddToCalendar: true,
+	})
+
+	if !errors.Is(err, ErrInvalidRSVP) {
+		t.Fatalf("expected ErrInvalidRSVP, got %v", err)
+	}
+	if len(repo.participants) != 0 {
+		t.Fatalf("expected no participant row for user-submitted invited, got %d", len(repo.participants))
+	}
+}
+
+func TestCancelDeletesEventSchedules(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	event := repo.seedEvent(activeEvent())
+	ownerID := event.OwnerID
+	firstUserID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	secondUserID := uuid.MustParse("bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb")
+	repo.schedules[participantKey(event.ID, firstUserID)] = fakeSchedule{EventID: event.ID, UserID: firstUserID}
+	repo.schedules[participantKey(event.ID, secondUserID)] = fakeSchedule{EventID: event.ID, UserID: secondUserID}
+
+	cancelled, err := service.Cancel(context.Background(), ownerID, event.ID)
+	if err != nil {
+		t.Fatalf("cancel event: %v", err)
+	}
+
+	if cancelled.Status != StatusCancelled {
+		t.Fatalf("expected cancelled status, got %q", cancelled.Status)
+	}
+	if len(repo.schedules) != 0 {
+		t.Fatalf("expected cancel to delete event schedules, got %d rows", len(repo.schedules))
+	}
+}
+
 func TestRSVPConcurrentGoingClaimsOnlyLastSeat(t *testing.T) {
 	repo := newConcurrentRSVPRepository()
 	service := NewService(repo)
@@ -517,6 +559,15 @@ func (r *fakeEventRepository) DeleteEventSchedule(ctx context.Context, userID uu
 	return nil
 }
 
+func (r *fakeEventRepository) DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error {
+	for key, schedule := range r.schedules {
+		if schedule.EventID == eventID {
+			delete(r.schedules, key)
+		}
+	}
+	return nil
+}
+
 func (r *fakeEventRepository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
 	return r.conflicts, nil
 }
@@ -684,6 +735,10 @@ func (r *concurrentRSVPRepository) DeleteEventSchedule(ctx context.Context, user
 	return nil
 }
 
+func (r *concurrentRSVPRepository) DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error {
+	return nil
+}
+
 func (r *concurrentRSVPRepository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
 	return nil, nil
 }
@@ -768,6 +823,10 @@ func (tx *concurrentRSVPTransaction) UpsertEventSchedule(ctx context.Context, us
 
 func (tx *concurrentRSVPTransaction) DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error {
 	return tx.shared.DeleteEventSchedule(ctx, userID, eventID)
+}
+
+func (tx *concurrentRSVPTransaction) DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error {
+	return tx.shared.DeleteEventSchedulesForEvent(ctx, eventID)
 }
 
 func (tx *concurrentRSVPTransaction) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {

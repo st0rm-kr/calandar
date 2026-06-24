@@ -48,3 +48,11 @@ func DeleteEventSchedule(ctx context.Context, db *gorm.DB, userID uuid.UUID, eve
 		Update("deleted_at", time.Now().UTC()).
 		Error
 }
+
+func DeleteEventSchedulesForEvent(ctx context.Context, db *gorm.DB, eventID int64) error {
+	return db.WithContext(ctx).
+		Model(&Schedule{}).
+		Where("event_id = ? AND source = ? AND deleted_at IS NULL", eventID, SourceEvent).
+		Update("deleted_at", time.Now().UTC()).
+		Error
+}

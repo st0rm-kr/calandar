@@ -11,9 +11,10 @@
   - 新增 `RSVPInput`、`RSVPResult`、`ScheduleConflict`。
 - 扩展 `apps/api/internal/events/service.go`。
   - 新增 `RSVP` 事务流程：加载活动、拒绝 cancelled/expired、容量检查、participant upsert、event schedule upsert/delete、返回冲突。
+  - 用户 RSVP 只接受 `going` / `maybe` / `not_going`，拒绝外部提交 `invited`。
   - `going` 容量检查排除当前用户，保证重复 RSVP 幂等。
   - 过滤同一活动生成的 event schedule，避免把活动自己的日程作为冲突返回。
-  - 新增 `Cancel` service 入口。
+  - 新增 `Cancel` service 入口，并在 cancel 事务内删除该 event 的自动日程。
 - 扩展 `apps/api/internal/events/repository.go`。
   - 新增事务包装、锁定参与记录后的 going 计数、participant upsert。
   - 通过 schedules linker 实现 event schedule upsert/delete。
@@ -30,6 +31,8 @@
   - 容量满员映射为 `409 capacity_full`。
 - 扩展测试。
   - RSVP service 覆盖 going/maybe 自动日程、not_going 删除、`add_to_calendar=false` 删除、容量满、幂等更新、invited 转 going。
+  - RSVP service 覆盖用户提交 `invited` 被拒绝。
+  - Cancel service 覆盖取消活动后删除 event schedules。
   - HTTP 路由测试覆盖容量满员映射为 409。
 
 ## Verification
@@ -61,6 +64,8 @@ Result:
 - `TestRSVPCapacityFullReturnsDomainError`: PASS
 - `TestRSVPUpdatingExistingParticipantIsIdempotent`: PASS
 - `TestRSVPInvitedParticipantChangingToGoingKeepsOneRow`: PASS
+- `TestRSVPRejectsUserSubmittedInvited`: PASS
+- `TestCancelDeletesEventSchedules`: PASS
 
 Endpoint regression:
 

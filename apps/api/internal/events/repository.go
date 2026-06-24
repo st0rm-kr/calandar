@@ -129,6 +129,10 @@ func (r *Repository) DeleteEventSchedule(ctx context.Context, userID uuid.UUID, 
 	return schedules.DeleteEventSchedule(ctx, r.db, userID, eventID)
 }
 
+func (r *Repository) DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error {
+	return schedules.DeleteEventSchedulesForEvent(ctx, r.db, eventID)
+}
+
 func (r *Repository) FindConflicts(ctx context.Context, userID uuid.UUID, start time.Time, end *time.Time) ([]ScheduleConflict, error) {
 	conflicts, err := schedules.FindConflicts(ctx, r.db, userID, start, end)
 	if err != nil {
