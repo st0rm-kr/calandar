@@ -14,10 +14,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if _, err := db.Open(context.Background(), cfg); err != nil {
+	conn, err := db.Open(context.Background(), cfg)
+	if err != nil {
 		log.Fatal(err)
 	}
-	router := apihttp.NewRouter(apihttp.Dependencies{})
+	router := apihttp.NewRouter(apihttp.Dependencies{Config: cfg, DB: conn})
 	if err := router.Run(cfg.Addr); err != nil {
 		log.Fatal(err)
 	}
