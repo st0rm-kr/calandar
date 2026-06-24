@@ -28,7 +28,6 @@ export default function EventDetailPage() {
 
   useEffect(() => {
     if (!slug) {
-      setError('活动链接无效')
       return
     }
 
@@ -74,14 +73,16 @@ export default function EventDetailPage() {
     }
   }
 
-  if (error && !detail) {
+  const loadError = slug ? error : '活动链接无效'
+
+  if (loadError && !detail) {
     return (
       <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
         <section className="mx-auto max-w-xl rounded-3xl bg-white/10 p-6 shadow-xl">
           <Link className="text-sm text-white/60" to="/">
             Hangout
           </Link>
-          <p className="mt-6 text-white/70">{error}</p>
+          <p className="mt-6 text-white/70">{loadError}</p>
         </section>
       </main>
     )
