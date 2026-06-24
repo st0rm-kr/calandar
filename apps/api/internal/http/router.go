@@ -44,6 +44,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.DELETE("/events/:id/rsvp", eventHandler.HandleDeleteRSVP)
 	authenticated.POST("/events/:id/cancel", eventHandler.HandleCancel)
 	api.GET("/events/:slug", eventHandler.HandleGetDetail)
+	router.GET("/e/:slug", eventHandler.HandleOGPage)
 
 	return router
 }

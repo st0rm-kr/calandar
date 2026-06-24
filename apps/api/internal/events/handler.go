@@ -2,6 +2,7 @@ package events
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
 	"strconv"
 	"time"
@@ -31,6 +32,29 @@ type rsvpRequest struct {
 	AddToCalendar *bool  `json:"add_to_calendar"`
 	Visibility    string `json:"visibility"`
 }
+
+type ogPageData struct {
+	Title       string
+	Description string
+	Slug        string
+}
+
+var ogPageTemplate = template.Must(template.New("og_page").Parse(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ .Title }}</title>
+<meta property="og:title" content="{{ .Title }}">
+<meta property="og:type" content="website">
+<meta property="og:description" content="{{ .Description }}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ .Title }}">
+<meta name="twitter:description" content="{{ .Description }}">
+</head>
+<body>
+<div id="root" data-event-slug="{{ .Slug }}"></div>
+</body>
+</html>`))
 
 func NewHandler(service *Service) *Handler {
 	return &Handler{service: service}
@@ -74,6 +98,25 @@ func (h *Handler) HandleGetDetail(c *gin.Context) {
 		return
 	}
 	respondOK(c, http.StatusOK, detail)
+}
+
+func (h *Handler) HandleOGPage(c *gin.Context) {
+	detail, err := h.service.GetDetail(c.Request.Context(), c.Param("slug"))
+	if err != nil {
+		h.respondServiceError(c, err)
+		return
+	}
+
+	event := detail.Event
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusOK)
+	if err := ogPageTemplate.Execute(c.Writer, ogPageData{
+		Title:       event.Title,
+		Description: ogPageDescription(event),
+		Slug:        event.ShareSlug,
+	}); err != nil {
+		_ = c.Error(err)
+	}
 }
 
 func (h *Handler) HandleListMine(c *gin.Context) {
@@ -192,6 +235,14 @@ func parseEventID(c *gin.Context) (int64, bool) {
 		return 0, false
 	}
 	return eventID, true
+}
+
+func ogPageDescription(event Event) string {
+	description := event.StartAt.UTC().Format("2006-01-02 15:04 MST")
+	if event.Location != nil && *event.Location != "" {
+		description += " - " + *event.Location
+	}
+	return description
 }
 
 func respondOK(c *gin.Context, status int, data any) {
