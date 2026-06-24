@@ -1,83 +1,160 @@
-import { useEffect, useState } from 'react'
-import { Link, Route, Routes } from 'react-router-dom'
-import { apiGet } from './lib/api'
+import { Route, Routes } from 'react-router-dom'
 import CalendarPage from './CalendarPage'
 import EventDetailPage from './EventDetailPage'
+import EventsPage from './EventsPage'
 import FriendsPage from './FriendsPage'
 import GroupDetailPage from './GroupDetailPage'
 import GroupsPage from './GroupsPage'
 import InboxPage from './InboxPage'
 import LoginPage from './LoginPage'
+import MePage from './MePage'
 import NewEventPage from './NewEventPage'
+import NotFoundPage from './NotFoundPage'
 import NotificationsPage from './NotificationsPage'
 import ProfilePage from './ProfilePage'
 import ScheduleEditorPage from './ScheduleEditorPage'
+import { AppShell } from './components/AppShell'
+import { RequireAuth } from './components/RequireAuth'
+import { useSession } from './hooks/useSession'
+import { getInbox } from './lib/inbox'
+import { useAsync } from './hooks/useAsync'
 import './index.css'
 
-type Health = { status: string }
-
-function HomePage() {
-  const [status, setStatus] = useState('checking')
-
-  useEffect(() => {
-    apiGet<Health>('/api/health')
-      .then((data) => setStatus(data.status))
-      .catch(() => setStatus('unavailable'))
-  }, [])
-
+function AuthedShell({
+  session,
+  children,
+  showTabs = true,
+}: {
+  session: ReturnType<typeof useSession>
+  children: React.ReactNode
+  showTabs?: boolean
+}) {
+  const inbox = useAsync(() => getInbox(), [session.session?.access_token])
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
-      <section className="mx-auto max-w-md rounded-3xl bg-white/10 p-6 shadow-xl">
-        <p className="text-sm text-white/60">Hangout</p>
-        <h1 className="mt-3 text-3xl font-semibold">社交日历</h1>
-        <p className="mt-4 text-white/70">API status: {status}</p>
-        <nav className="mt-6 flex flex-wrap gap-3 text-sm">
-          <Link className="rounded-full bg-white px-4 py-2 font-medium text-neutral-950" to="/calendar">
-            日历
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/login">
-            登录
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/events/new">
-            创建活动
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/friends">
-            好友
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/groups">
-            群组
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/inbox">
-            收件箱
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/notifications">
-            通知
-          </Link>
-          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/profile">
-            个人页
-          </Link>
-        </nav>
-      </section>
-    </main>
+    <RequireAuth session={session}>
+      <AppShell inboxCount={inbox.data?.counts.total ?? 0} showTabs={showTabs}>
+        {children}
+      </AppShell>
+    </RequireAuth>
   )
 }
 
 export default function App() {
+  const session = useSession()
+
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/profile" element={<ProfilePage />} />
-      <Route path="/calendar" element={<CalendarPage />} />
-      <Route path="/schedules/new" element={<ScheduleEditorPage />} />
-      <Route path="/schedules/:id" element={<ScheduleEditorPage />} />
-      <Route path="/events/new" element={<NewEventPage />} />
-      <Route path="/events/:slug" element={<EventDetailPage />} />
-      <Route path="/friends" element={<FriendsPage />} />
-      <Route path="/groups" element={<GroupsPage />} />
-      <Route path="/groups/:id" element={<GroupDetailPage />} />
-      <Route path="/inbox" element={<InboxPage />} />
-      <Route path="/notifications" element={<NotificationsPage />} />
+      <Route path="/e/:slug" element={<EventDetailPage session={session} />} />
+      <Route
+        path="/"
+        element={
+          <AuthedShell session={session}>
+            <CalendarPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/calendar"
+        element={
+          <AuthedShell session={session}>
+            <CalendarPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/events"
+        element={
+          <AuthedShell session={session}>
+            <EventsPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/events/new"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <NewEventPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/events/:slug"
+        element={<EventDetailPage session={session} />}
+      />
+      <Route
+        path="/schedules/new"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <ScheduleEditorPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/schedules/:id"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <ScheduleEditorPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/inbox"
+        element={
+          <AuthedShell session={session}>
+            <InboxPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/friends"
+        element={
+          <AuthedShell session={session}>
+            <FriendsPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/groups"
+        element={
+          <AuthedShell session={session}>
+            <GroupsPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/groups/:id"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <GroupDetailPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/notifications"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <NotificationsPage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <AuthedShell session={session} showTabs={false}>
+            <ProfilePage />
+          </AuthedShell>
+        }
+      />
+      <Route
+        path="/me"
+        element={
+          <AuthedShell session={session}>
+            <MePage session={session} />
+          </AuthedShell>
+        }
+      />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
 }

@@ -104,12 +104,10 @@ export default function CalendarPage() {
     : []
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-5 py-8 text-white">
+    <main className="-mx-4 -mt-4 px-5 pb-4 pt-4 text-white">
       <section className="mx-auto max-w-2xl rounded-3xl bg-white/10 p-6 shadow-xl">
         <div className="flex items-center justify-between">
-          <Link className="text-sm text-white/60" to="/">
-            Hangout
-          </Link>
+          <span className="text-sm text-white/60">日历</span>
           <div className="flex items-center gap-2 text-sm">
             <button
               className="rounded-full border border-white/20 px-3 py-1"

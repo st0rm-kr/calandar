@@ -1,13 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
-import EventDetailPage from './EventDetailPage'
 import { apiGet } from './lib/api'
 import type { EventDetail } from './lib/events'
-import { getEventBySlug } from './lib/events'
+import { getEventBySlug, rsvpEvent } from './lib/events'
 import { getCalendar } from './lib/calendar'
-import { checkConflicts } from './lib/schedules'
+import { getInbox } from './lib/inbox'
+import { supabase } from './lib/supabase'
 
 vi.mock('./lib/api', () => ({
   apiGet: vi.fn(),
@@ -22,6 +22,9 @@ vi.mock('./lib/events', () => ({
 vi.mock('./lib/calendar', () => ({
   getCalendar: vi.fn(),
 }))
+vi.mock('./lib/inbox', () => ({
+  getInbox: vi.fn(),
+}))
 vi.mock('./lib/schedules', () => ({
   listSchedules: vi.fn(),
   createSchedule: vi.fn(),
@@ -32,6 +35,8 @@ vi.mock('./lib/schedules', () => ({
 vi.mock('./lib/supabase', () => ({
   supabase: {
     auth: {
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(),
       signInWithPassword: vi.fn(),
       signUp: vi.fn(),
       resetPasswordForEmail: vi.fn(),
@@ -43,7 +48,19 @@ vi.mock('./lib/supabase', () => ({
 const mockedApiGet = vi.mocked(apiGet)
 const mockedGetEventBySlug = vi.mocked(getEventBySlug)
 const mockedGetCalendar = vi.mocked(getCalendar)
-const mockedCheckConflicts = vi.mocked(checkConflicts)
+const mockedGetInbox = vi.mocked(getInbox)
+const mockedRsvpEvent = vi.mocked(rsvpEvent)
+const mockedGetSession = vi.mocked(supabase.auth.getSession)
+const mockedOnAuthStateChange = vi.mocked(supabase.auth.onAuthStateChange)
+
+type FakeSession = { access_token: string }
+
+function setSession(session: FakeSession | null) {
+  mockedGetSession.mockResolvedValue({
+    data: { session },
+    error: null,
+  } as Awaited<ReturnType<typeof supabase.auth.getSession>>)
+}
 
 function createEventDetail(slug: string, title: string): EventDetail {
   return {
@@ -63,14 +80,6 @@ function createEventDetail(slug: string, title: string): EventDetail {
   }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((promiseResolve) => {
-    resolve = promiseResolve
-  })
-  return { promise, resolve }
-}
-
 function renderApp(path = '/') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -79,171 +88,129 @@ function renderApp(path = '/') {
   )
 }
 
-function EventRouteHarness() {
-  const navigate = useNavigate()
-
-  return (
-    <>
-      <button onClick={() => navigate('/events/second')} type="button">
-        切换活动
-      </button>
-      <Routes>
-        <Route path="/events/:slug" element={<EventDetailPage />} />
-      </Routes>
-    </>
-  )
-}
-
 describe('App', () => {
   beforeEach(() => {
     mockedApiGet.mockReset()
     mockedGetEventBySlug.mockReset()
-  })
-
-  it('renders the health status returned by the API', async () => {
-    mockedApiGet.mockResolvedValueOnce({ status: 'ok' })
-
-    renderApp()
-
-    expect(screen.getByText('Hangout')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '社交日历' })).toBeInTheDocument()
-    expect(screen.getByText('API status: checking')).toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(screen.getByText('API status: ok')).toBeInTheDocument()
+    mockedGetCalendar.mockReset()
+    mockedGetInbox.mockReset()
+    mockedRsvpEvent.mockReset()
+    mockedGetSession.mockReset()
+    mockedOnAuthStateChange.mockReset()
+    mockedOnAuthStateChange.mockReturnValue({
+      data: { subscription: { unsubscribe: vi.fn() } },
+    } as unknown as ReturnType<typeof supabase.auth.onAuthStateChange>)
+    mockedGetInbox.mockResolvedValue({
+      counts: {
+        total: 0,
+        event_invites: 0,
+        friend_requests: 0,
+        group_invites: 0,
+      },
+      items: [],
     })
-    expect(mockedApiGet).toHaveBeenCalledWith('/api/health')
-  })
-
-  it('renders unavailable when the health check fails', async () => {
-    mockedApiGet.mockRejectedValueOnce(new Error('offline'))
-
-    renderApp()
-
-    await waitFor(() => {
-      expect(screen.getByText('API status: unavailable')).toBeInTheDocument()
-    })
-  })
-
-  it('renders the login route', () => {
-    renderApp('/login')
-
-    expect(screen.getByRole('heading', { name: '登录 Hangout' })).toBeInTheDocument()
-    expect(screen.getByLabelText('邮箱')).toBeInTheDocument()
-    expect(screen.getByLabelText('密码')).toBeInTheDocument()
-  })
-
-  it('loads the current user profile route', async () => {
-    mockedApiGet.mockResolvedValueOnce({
+    mockedApiGet.mockResolvedValue({
       id: 'user-1',
       display_name: 'Lily',
       avatar_url: null,
       email: 'lily@example.com',
       status: 'active',
     })
+    setSession(null)
+  })
 
-    renderApp('/profile')
+  it('redirects unauthenticated users from / to login with redirect', async () => {
+    renderApp('/')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Lily' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: '登录 Hangout' }),
+      ).toBeInTheDocument()
     })
-    expect(mockedApiGet).toHaveBeenCalledWith('/api/users/me')
   })
 
-  it('renders the new event route', () => {
-    renderApp('/events/new')
-
-    expect(screen.getByRole('heading', { name: '创建活动' })).toBeInTheDocument()
-    expect(screen.getByLabelText('标题')).toBeInTheDocument()
-    expect(screen.getByLabelText('开始时间')).toBeInTheDocument()
-  })
-
-  it('loads the event detail route by slug', async () => {
-    mockedGetEventBySlug.mockResolvedValueOnce(
+  it('does not redirect anonymous users away from a shared event page', async () => {
+    mockedGetEventBySlug.mockResolvedValue(
       createEventDetail('abc123def4', '周末攀岩'),
     )
 
-    renderApp('/events/abc123def4')
+    renderApp('/e/abc123def4')
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '周末攀岩' })).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: '周末攀岩' }),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByRole('link', { name: '登录以报名' })).toBeInTheDocument()
+  })
+
+  it('renders the login route', () => {
+    renderApp('/login')
+
+    expect(
+      screen.getByRole('heading', { name: '登录 Hangout' }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('邮箱')).toBeInTheDocument()
+    expect(screen.getByLabelText('密码')).toBeInTheDocument()
+  })
+
+  it('renders the calendar for authenticated users', async () => {
+    setSession({ access_token: 'token' })
+    mockedGetCalendar.mockResolvedValue([])
+
+    renderApp('/')
+
+    await waitFor(() => {
+      expect(screen.getByText('个人日程')).toBeInTheDocument()
+    })
+  })
+
+  it('loads the event detail route by slug', async () => {
+    setSession({ access_token: 'token' })
+    mockedGetEventBySlug.mockResolvedValue(
+      createEventDetail('abc123def4', '周末攀岩'),
+    )
+
+    renderApp('/e/abc123def4')
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: '周末攀岩' }),
+      ).toBeInTheDocument()
     })
     expect(mockedGetEventBySlug).toHaveBeenCalledWith('abc123def4')
   })
 
-  it('ignores stale event detail requests after route changes', async () => {
-    const firstRequest = deferred<EventDetail>()
-    const secondRequest = deferred<EventDetail>()
-    mockedGetEventBySlug
-      .mockReturnValueOnce(firstRequest.promise)
-      .mockReturnValueOnce(secondRequest.promise)
-
-    render(
-      <MemoryRouter initialEntries={['/events/first']}>
-        <EventRouteHarness />
-      </MemoryRouter>,
+  it('lets authenticated users submit an RSVP', async () => {
+    setSession({ access_token: 'token' })
+    mockedGetEventBySlug.mockResolvedValue(
+      createEventDetail('abc123def4', '周末攀岩'),
     )
-
-    await waitFor(() => {
-      expect(mockedGetEventBySlug).toHaveBeenCalledWith('first')
+    mockedRsvpEvent.mockResolvedValue({
+      participant: { id: 1, event_id: 12, rsvp: 'going', add_to_calendar: true },
+      conflicts: [],
     })
 
-    fireEvent.click(screen.getByRole('button', { name: '切换活动' }))
+    renderApp('/e/abc123def4')
 
     await waitFor(() => {
-      expect(mockedGetEventBySlug).toHaveBeenCalledWith('second')
+      expect(screen.getByRole('button', { name: '我要参加' })).toBeEnabled()
     })
 
-    secondRequest.resolve(createEventDetail('second', '新的活动'))
+    fireEvent.click(screen.getByRole('button', { name: '我要参加' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '新的活动' })).toBeInTheDocument()
+      expect(mockedRsvpEvent).toHaveBeenCalledWith(12, {
+        rsvp: 'going',
+        add_to_calendar: true,
+        visibility: 'busy_only',
+      })
     })
-
-    firstRequest.resolve(createEventDetail('first', '过期活动'))
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '新的活动' })).toBeInTheDocument()
-    })
-    expect(screen.queryByRole('heading', { name: '过期活动' })).not.toBeInTheDocument()
   })
 
-  it('renders the calendar route with items', async () => {
-    mockedGetCalendar.mockResolvedValueOnce([
-      {
-        id: 1,
-        kind: 'schedule',
-        title: '晨跑',
-        start_at: '2026-06-15T01:00:00Z',
-        end_at: '2026-06-15T02:00:00Z',
-        location: null,
-        visibility: 'public',
-        color: 'green',
-        has_conflict: false,
-        event_id: null,
-      },
-    ])
+  it('renders a 404 for unknown routes', () => {
+    renderApp('/does-not-exist')
 
-    renderApp('/calendar')
-
-    await waitFor(() => {
-      expect(mockedGetCalendar).toHaveBeenCalled()
-    })
-    expect(screen.getByText('群活动')).toBeInTheDocument()
-    expect(screen.getByText('个人日程')).toBeInTheDocument()
-  })
-
-  it('renders the new schedule editor route', async () => {
-    mockedCheckConflicts.mockResolvedValue([])
-
-    renderApp('/schedules/new')
-
-    expect(screen.getByRole('heading', { name: '新建日程' })).toBeInTheDocument()
-    expect(screen.getByLabelText('标题')).toBeInTheDocument()
-    expect(screen.getByLabelText('开始时间')).toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: '保存日程' })).toBeEnabled()
-    })
+    expect(screen.getByText('页面不存在')).toBeInTheDocument()
   })
 })

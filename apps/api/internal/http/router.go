@@ -42,7 +42,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 		userService = users.NewService(users.NewRepository(deps.DB))
 	}
 	userHandler := users.NewHandler(userService)
-	authenticated := api.Group("", auth.RequireUser(deps.Config.SupabaseJWTSecret))
+	verifier := auth.NewVerifier(deps.Config.SupabaseJWTSecret, deps.Config.SupabaseJWKSURL)
+	authenticated := api.Group("", verifier.Middleware())
 	authenticated.GET("/auth/me", userHandler.HandleAuthMe)
 	authenticated.GET("/users/me", userHandler.HandleGetMe)
 	authenticated.PATCH("/users/me", userHandler.HandlePatchMe)

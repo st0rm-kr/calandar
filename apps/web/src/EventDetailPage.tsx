@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { EventDetail, EventRSVP, RSVPResult } from './lib/events'
 import { getEventBySlug, rsvpEvent } from './lib/events'
+import type { SessionState } from './hooks/useSession'
+import { ConflictBanner } from './components/ConflictBanner'
+import { EventTypeBadge } from './components/EventTypeBadge'
 
 const rsvpOptions: Array<{ value: EventRSVP; label: string }> = [
   { value: 'going', label: '我要参加' },
@@ -16,7 +19,11 @@ function formatDateTime(value: string): string {
   }).format(new Date(value))
 }
 
-export default function EventDetailPage() {
+type EventDetailPageProps = {
+  session?: SessionState
+}
+
+export default function EventDetailPage({ session }: EventDetailPageProps) {
   const { slug } = useParams()
   const [detail, setDetail] = useState<EventDetail | null>(null)
   const [error, setError] = useState('')
@@ -25,6 +32,8 @@ export default function EventDetailPage() {
   const [visibility, setVisibility] = useState('busy_only')
   const [submittingRSVP, setSubmittingRSVP] = useState<EventRSVP | null>(null)
   const [rsvpResult, setRsvpResult] = useState<RSVPResult | null>(null)
+
+  const isAuthenticated = Boolean(session?.session)
 
   useEffect(() => {
     if (!slug) {
@@ -122,7 +131,10 @@ export default function EventDetailPage() {
         <p className="mt-6 text-sm uppercase tracking-[0.2em] text-white/50">
           Event
         </p>
-        <h1 className="mt-3 text-3xl font-semibold">{event.title}</h1>
+        <div className="mt-3 flex items-center gap-3">
+          <h1 className="text-3xl font-semibold">{event.title}</h1>
+          <EventTypeBadge type={event.type} />
+        </div>
 
         <dl className="mt-6 grid gap-4 text-sm text-white/75 sm:grid-cols-2">
           <div>
@@ -162,63 +174,82 @@ export default function EventDetailPage() {
 
         <div className="mt-8 rounded-3xl border border-white/10 p-4">
           <h2 className="text-lg font-semibold">RSVP</h2>
-          <label className="mt-4 flex items-center gap-3 text-sm text-white/75">
-            <input
-              checked={addToCalendar}
-              onChange={(event) => setAddToCalendar(event.target.checked)}
-              type="checkbox"
-            />
-            加入我的日历
-          </label>
 
-          <label className="mt-4 block text-sm font-medium text-white/80">
-            日历可见性
-            <select
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-white outline-none focus:border-white/40"
-              disabled={!addToCalendar}
-              onChange={(event) => setVisibility(event.target.value)}
-              value={visibility}
-            >
-              <option value="public">公开</option>
-              <option value="busy_only">仅显示忙碌</option>
-              <option value="private">私密</option>
-            </select>
-          </label>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            {rsvpOptions.map((option) => {
-              const fullGoingButton = option.value === 'going' && isFull
-              return (
-                <button
-                  className="rounded-full border border-white/20 px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  disabled={
-                    disabledRSVP || fullGoingButton || submittingRSVP !== null
-                  }
-                  key={option.value}
-                  onClick={() => void submitRSVP(option.value)}
-                  type="button"
-                >
-                  {submittingRSVP === option.value ? '提交中...' : option.label}
-                </button>
-              )
-            })}
-          </div>
-
-          {message ? <p className="mt-4 text-sm text-emerald-300">{message}</p> : null}
-          {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
-
-          {rsvpResult?.conflicts.length ? (
-            <div className="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
-              <p className="font-medium">时间可能有冲突</p>
-              <ul className="mt-2 space-y-1">
-                {rsvpResult.conflicts.map((conflict) => (
-                  <li key={conflict.id}>
-                    {conflict.title} · {formatDateTime(conflict.start_at)}
-                  </li>
-                ))}
-              </ul>
+          {!isAuthenticated ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm text-white/60">登录后即可报名这个活动。</p>
+              <Link
+                className="inline-block rounded-full bg-white px-5 py-2.5 text-sm font-medium text-neutral-950"
+                to={`/login?redirect=${encodeURIComponent(`/e/${event.share_slug}`)}`}
+              >
+                登录以报名
+              </Link>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <label className="mt-4 flex items-center gap-3 text-sm text-white/75">
+                <input
+                  checked={addToCalendar}
+                  onChange={(event) => setAddToCalendar(event.target.checked)}
+                  type="checkbox"
+                />
+                加入我的日历
+              </label>
+
+              <label className="mt-4 block text-sm font-medium text-white/80">
+                日历可见性
+                <select
+                  className="mt-2 w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-3 text-white outline-none focus:border-white/40"
+                  disabled={!addToCalendar}
+                  onChange={(event) => setVisibility(event.target.value)}
+                  value={visibility}
+                >
+                  <option value="public">公开</option>
+                  <option value="busy_only">仅显示忙碌</option>
+                  <option value="private">私密</option>
+                </select>
+              </label>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {rsvpOptions.map((option) => {
+                  const fullGoingButton = option.value === 'going' && isFull
+                  return (
+                    <button
+                      className="rounded-full border border-white/20 px-4 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={
+                        disabledRSVP || fullGoingButton || submittingRSVP !== null
+                      }
+                      key={option.value}
+                      onClick={() => void submitRSVP(option.value)}
+                      type="button"
+                    >
+                      {submittingRSVP === option.value
+                        ? '提交中...'
+                        : option.label}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {message ? (
+                <p className="mt-4 text-sm text-emerald-300">{message}</p>
+              ) : null}
+              {error ? (
+                <p className="mt-4 text-sm text-red-300">{error}</p>
+              ) : null}
+
+              {rsvpResult?.conflicts.length ? (
+                <div className="mt-5">
+                  <ConflictBanner
+                    conflicts={rsvpResult.conflicts.map((conflict) => ({
+                      id: conflict.id,
+                      title: conflict.title,
+                    }))}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
         </div>
       </section>
     </main>

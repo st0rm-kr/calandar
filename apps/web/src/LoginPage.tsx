@@ -1,17 +1,24 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 
 type AuthStatus = 'idle' | 'loading' | 'success' | 'error'
 
 export default function LoginPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirect = searchParams.get('redirect') || '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [status, setStatus] = useState<AuthStatus>('idle')
   const [message, setMessage] = useState('')
 
-  async function runAuthAction(action: () => Promise<{ error: { message: string } | null }>, success: string) {
+  async function runAuthAction(
+    action: () => Promise<{ error: { message: string } | null }>,
+    success: string,
+    onSuccess?: () => void,
+  ) {
     setStatus('loading')
     setMessage('')
     const { error } = await action()
@@ -22,6 +29,7 @@ export default function LoginPage() {
     }
     setStatus('success')
     setMessage(success)
+    onSuccess?.()
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -29,6 +37,7 @@ export default function LoginPage() {
     await runAuthAction(
       () => supabase.auth.signInWithPassword({ email, password }),
       '登录成功',
+      () => navigate(redirect, { replace: true }),
     )
   }
 
