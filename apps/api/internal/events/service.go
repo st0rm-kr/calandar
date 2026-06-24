@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -161,5 +162,9 @@ func deriveExpired(event Event, now time.Time) Event {
 }
 
 func isSlugConflict(err error) bool {
-	return errors.Is(err, ErrShareSlugConflict) || errors.Is(err, gorm.ErrDuplicatedKey)
+	if errors.Is(err, ErrShareSlugConflict) || errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

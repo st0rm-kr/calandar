@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -68,6 +69,34 @@ func TestCreateRejectsEndAtBeforeOrEqualStartAt(t *testing.T) {
 	}
 }
 
+func TestCreateRetriesPostgresUniqueViolationForShareSlug(t *testing.T) {
+	repo := newFakeEventRepository()
+	repo.createErrors = []error{&pgconn.PgError{
+		Code:           "23505",
+		ConstraintName: "events_share_slug_key",
+	}}
+	service := NewService(repo)
+	ownerID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	startAt := time.Now().Add(time.Hour).UTC()
+
+	event, err := service.Create(context.Background(), ownerID, CreateEventInput{
+		Title:   "Climb",
+		Type:    "climbing",
+		Scope:   "personal",
+		StartAt: startAt,
+	})
+	if err != nil {
+		t.Fatalf("expected retry to create event, got error: %v", err)
+	}
+
+	if event.ID == 0 {
+		t.Fatalf("expected event to be persisted after retry, got %+v", event)
+	}
+	if repo.createAttempts != 2 {
+		t.Fatalf("expected 2 create attempts, got %d", repo.createAttempts)
+	}
+}
+
 func TestGetDetailReturnsParticipantCountsWithoutAuth(t *testing.T) {
 	repo := newFakeEventRepository()
 	service := NewService(repo)
@@ -126,10 +155,12 @@ func TestGetDetailDerivesExpiredStatusFromEndOrStartAt(t *testing.T) {
 }
 
 type fakeEventRepository struct {
-	events       map[int64]Event
-	eventsBySlug map[string]int64
-	goingCounts  map[int64]int
-	nextID       int64
+	events         map[int64]Event
+	eventsBySlug   map[string]int64
+	goingCounts    map[int64]int
+	createErrors   []error
+	createAttempts int
+	nextID         int64
 }
 
 func newFakeEventRepository() *fakeEventRepository {
@@ -142,6 +173,12 @@ func newFakeEventRepository() *fakeEventRepository {
 }
 
 func (r *fakeEventRepository) Create(ctx context.Context, event Event) (Event, error) {
+	r.createAttempts++
+	if len(r.createErrors) > 0 {
+		err := r.createErrors[0]
+		r.createErrors = r.createErrors[1:]
+		return Event{}, err
+	}
 	if _, ok := r.eventsBySlug[event.ShareSlug]; ok {
 		return Event{}, ErrShareSlugConflict
 	}
