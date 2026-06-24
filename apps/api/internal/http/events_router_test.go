@@ -174,6 +174,10 @@ func (r *fakeEventRepository) UpsertParticipant(ctx context.Context, participant
 	return participant, nil
 }
 
+func (r *fakeEventRepository) FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (events.Participant, bool, error) {
+	return events.Participant{}, false, nil
+}
+
 func (r *fakeEventRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event events.Event, visibility string) error {
 	return nil
 }

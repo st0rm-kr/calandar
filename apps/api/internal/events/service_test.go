@@ -541,6 +541,14 @@ func (r *fakeEventRepository) UpsertParticipant(ctx context.Context, participant
 	return participant, nil
 }
 
+func (r *fakeEventRepository) FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error) {
+	participant, ok := r.participants[participantKey(eventID, userID)]
+	if !ok || participant.DeletedAt != nil {
+		return Participant{}, false, nil
+	}
+	return participant, true, nil
+}
+
 func (r *fakeEventRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
 	key := participantKey(event.ID, userID)
 	existing := r.schedules[key]
@@ -727,6 +735,16 @@ func (r *concurrentRSVPRepository) UpsertParticipant(ctx context.Context, partic
 	return participant, nil
 }
 
+func (r *concurrentRSVPRepository) FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	participant, ok := r.participants[participantKey(eventID, userID)]
+	if !ok || participant.DeletedAt != nil {
+		return Participant{}, false, nil
+	}
+	return participant, true, nil
+}
+
 func (r *concurrentRSVPRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
 	return nil
 }
@@ -815,6 +833,10 @@ func (tx *concurrentRSVPTransaction) CountGoingForUpdateExcludingUser(ctx contex
 
 func (tx *concurrentRSVPTransaction) UpsertParticipant(ctx context.Context, participant Participant) (Participant, error) {
 	return tx.shared.UpsertParticipant(ctx, participant)
+}
+
+func (tx *concurrentRSVPTransaction) FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error) {
+	return tx.shared.FindParticipant(ctx, eventID, userID)
 }
 
 func (tx *concurrentRSVPTransaction) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/bytedance/calandar/apps/api/internal/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -208,6 +209,42 @@ func (h *Handler) HandleCancel(c *gin.Context) {
 	respondOK(c, http.StatusOK, event)
 }
 
+func (h *Handler) HandleInvite(c *gin.Context) {
+	userID, ok := auth.UserIDFromContext(c.Request.Context())
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized", "missing authenticated user")
+		return
+	}
+	eventID, ok := parseEventID(c)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		InviteeIDs []string `json:"invitee_ids" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "bad_request", "invalid request body")
+		return
+	}
+	inviteeIDs := make([]uuid.UUID, 0, len(req.InviteeIDs))
+	for _, raw := range req.InviteeIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "bad_request", "invalid invitee id")
+			return
+		}
+		inviteeIDs = append(inviteeIDs, id)
+	}
+
+	invited, err := h.service.Invite(c.Request.Context(), userID, eventID, inviteeIDs)
+	if err != nil {
+		h.respondServiceError(c, err)
+		return
+	}
+	respondOK(c, http.StatusOK, invited)
+}
+
 func (h *Handler) respondServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidEventTitle),
@@ -221,6 +258,8 @@ func (h *Handler) respondServiceError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, "capacity_full", err.Error())
 	case errors.Is(err, ErrEventUnavailable):
 		respondError(c, http.StatusConflict, "event_unavailable", err.Error())
+	case errors.Is(err, ErrInviteForbidden):
+		respondError(c, http.StatusForbidden, "forbidden", err.Error())
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		respondError(c, http.StatusNotFound, "not_found", "event not found")
 	default:

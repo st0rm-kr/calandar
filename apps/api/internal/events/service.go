@@ -24,6 +24,7 @@ var (
 	ErrInvalidRSVP       = errors.New("rsvp must be invited, going, not_going, or maybe")
 	ErrEventUnavailable  = errors.New("event is not available for rsvp")
 	ErrCapacityFull      = errors.New("event capacity is full")
+	ErrInviteForbidden   = errors.New("not authorized to invite this user to the event")
 )
 
 type EventRepository interface {
@@ -36,6 +37,7 @@ type EventRepository interface {
 	Transaction(ctx context.Context, fn func(EventRepository) error) error
 	CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error)
 	UpsertParticipant(ctx context.Context, participant Participant) (Participant, error)
+	FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error)
 	UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error
 	DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error
 	DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error
@@ -44,12 +46,40 @@ type EventRepository interface {
 }
 
 type Service struct {
-	repo EventRepository
-	now  func() time.Time
+	repo             EventRepository
+	now              func() time.Time
+	friendAuthorizer FriendAuthorizer
+	groupAuthorizer  GroupAuthorizer
 }
 
-func NewService(repo EventRepository) *Service {
-	return &Service{repo: repo, now: time.Now}
+type FriendAuthorizer interface {
+	AreFriends(ctx context.Context, a, b uuid.UUID) (bool, error)
+}
+
+type GroupAuthorizer interface {
+	IsMember(ctx context.Context, groupID int64, userID uuid.UUID) (bool, error)
+}
+
+type Option func(*Service)
+
+func WithFriendAuthorizer(authorizer FriendAuthorizer) Option {
+	return func(s *Service) {
+		s.friendAuthorizer = authorizer
+	}
+}
+
+func WithGroupAuthorizer(authorizer GroupAuthorizer) Option {
+	return func(s *Service) {
+		s.groupAuthorizer = authorizer
+	}
+}
+
+func NewService(repo EventRepository, opts ...Option) *Service {
+	s := &Service{repo: repo, now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) Create(ctx context.Context, ownerID uuid.UUID, input CreateEventInput) (Event, error) {
@@ -181,6 +211,74 @@ func (s *Service) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (
 		return Event{}, err
 	}
 	return event, nil
+}
+
+func (s *Service) Invite(ctx context.Context, actorID uuid.UUID, eventID int64, inviteeIDs []uuid.UUID) ([]Participant, error) {
+	event, err := s.repo.FindByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	event = deriveExpired(event, s.now())
+	if event.Status != StatusActive {
+		return nil, ErrEventUnavailable
+	}
+
+	invited := make([]Participant, 0, len(inviteeIDs))
+	for _, inviteeID := range inviteeIDs {
+		if inviteeID == actorID {
+			continue
+		}
+		allowed, err := s.canInvite(ctx, actorID, inviteeID, event)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, ErrInviteForbidden
+		}
+
+		if _, exists, err := s.repo.FindParticipant(ctx, event.ID, inviteeID); err != nil {
+			return nil, err
+		} else if exists {
+			continue
+		}
+
+		participant, err := s.repo.UpsertParticipant(ctx, Participant{
+			EventID:       event.ID,
+			UserID:        inviteeID,
+			RSVP:          RSVPInvited,
+			Source:        ParticipantSourceInvited,
+			AddToCalendar: false,
+		})
+		if err != nil {
+			return nil, err
+		}
+		invited = append(invited, participant)
+	}
+	return invited, nil
+}
+
+func (s *Service) canInvite(ctx context.Context, actorID, inviteeID uuid.UUID, event Event) (bool, error) {
+	if event.Scope == "group" && event.GroupID != nil {
+		if s.groupAuthorizer == nil {
+			return false, nil
+		}
+		actorMember, err := s.groupAuthorizer.IsMember(ctx, *event.GroupID, actorID)
+		if err != nil {
+			return false, err
+		}
+		if !actorMember {
+			return false, nil
+		}
+		return s.groupAuthorizer.IsMember(ctx, *event.GroupID, inviteeID)
+	}
+
+	if event.OwnerID != actorID {
+		return false, nil
+	}
+	if s.friendAuthorizer == nil {
+		return false, nil
+	}
+	return s.friendAuthorizer.AreFriends(ctx, actorID, inviteeID)
 }
 
 func buildEvent(ownerID uuid.UUID, input CreateEventInput) (Event, error) {

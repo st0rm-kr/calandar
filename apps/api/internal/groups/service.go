@@ -95,6 +95,11 @@ func (s *Service) ListGroups(ctx context.Context, userID uuid.UUID) ([]Group, er
 	return groups, nil
 }
 
+func (s *Service) IsMember(ctx context.Context, groupID int64, userID uuid.UUID) (bool, error) {
+	_, ok, err := s.repo.FindMember(ctx, groupID, userID)
+	return ok, err
+}
+
 func (s *Service) GetDetail(ctx context.Context, actorID uuid.UUID, groupID int64) (GroupDetail, error) {
 	group, err := s.repo.FindGroupByID(ctx, groupID)
 	if err != nil {

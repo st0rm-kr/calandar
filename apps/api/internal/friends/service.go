@@ -117,3 +117,11 @@ func (s *Service) ListRequests(ctx context.Context, userID uuid.UUID) ([]Request
 func (s *Service) DeleteFriend(ctx context.Context, actorID, friendID uuid.UUID) error {
 	return s.repo.DeleteBetween(ctx, actorID, friendID)
 }
+
+func (s *Service) AreFriends(ctx context.Context, a, b uuid.UUID) (bool, error) {
+	existing, found, err := s.repo.FindBetween(ctx, a, b)
+	if err != nil {
+		return false, err
+	}
+	return found && existing.Status == StatusAccepted, nil
+}

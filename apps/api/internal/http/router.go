@@ -41,9 +41,22 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.PATCH("/users/me", userHandler.HandlePatchMe)
 	authenticated.GET("/users/search", userHandler.HandleSearch)
 
+	friendService := deps.FriendService
+	if friendService == nil {
+		friendService = friends.NewService(friends.NewRepository(deps.DB))
+	}
+	groupService := deps.GroupService
+	if groupService == nil {
+		groupService = groups.NewService(groups.NewRepository(deps.DB))
+	}
+
 	eventService := deps.EventService
 	if eventService == nil {
-		eventService = events.NewService(events.NewRepository(deps.DB))
+		eventService = events.NewService(
+			events.NewRepository(deps.DB),
+			events.WithFriendAuthorizer(friendService),
+			events.WithGroupAuthorizer(groupService),
+		)
 	}
 	eventHandler := events.NewHandler(eventService)
 	authenticated.POST("/events", eventHandler.HandleCreate)
@@ -51,6 +64,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/events/:id/rsvp", eventHandler.HandleRSVP)
 	authenticated.DELETE("/events/:id/rsvp", eventHandler.HandleDeleteRSVP)
 	authenticated.POST("/events/:id/cancel", eventHandler.HandleCancel)
+	authenticated.POST("/events/:id/invite", eventHandler.HandleInvite)
 	api.GET("/events/:slug", eventHandler.HandleGetDetail)
 	router.GET("/e/:slug", eventHandler.HandleOGPage)
 
@@ -72,10 +86,6 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	calendarHandler := calendar.NewHandler(calendarService)
 	authenticated.GET("/calendar", calendarHandler.HandleMonth)
 
-	friendService := deps.FriendService
-	if friendService == nil {
-		friendService = friends.NewService(friends.NewRepository(deps.DB))
-	}
 	friendHandler := friends.NewHandler(friendService)
 	authenticated.GET("/friends", friendHandler.HandleList)
 	authenticated.GET("/friends/requests", friendHandler.HandleListRequests)
@@ -84,10 +94,6 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/friends/requests/:id/reject", friendHandler.HandleReject)
 	authenticated.DELETE("/friends/:userId", friendHandler.HandleDelete)
 
-	groupService := deps.GroupService
-	if groupService == nil {
-		groupService = groups.NewService(groups.NewRepository(deps.DB))
-	}
 	groupHandler := groups.NewHandler(groupService)
 	authenticated.GET("/groups", groupHandler.HandleList)
 	authenticated.POST("/groups", groupHandler.HandleCreate)

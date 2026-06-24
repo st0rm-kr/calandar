@@ -2,6 +2,7 @@ package events
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
@@ -113,6 +114,21 @@ func (r *Repository) UpsertParticipant(ctx context.Context, participant Particip
 		First(&saved).
 		Error
 	return saved, err
+}
+
+func (r *Repository) FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error) {
+	var participant Participant
+	err := r.db.WithContext(ctx).
+		Where("event_id = ? AND user_id = ? AND deleted_at IS NULL", eventID, userID).
+		First(&participant).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return Participant{}, false, nil
+	}
+	if err != nil {
+		return Participant{}, false, err
+	}
+	return participant, true, nil
 }
 
 func (r *Repository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
