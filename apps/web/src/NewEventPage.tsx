@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { createEvent } from './lib/events'
 
 const eventTypes = [
@@ -17,8 +17,11 @@ function toISODateTime(value: string): string {
 
 export default function NewEventPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const groupIDParam = searchParams.get('group_id')
+  const groupID = groupIDParam ? Number(groupIDParam) : null
   const [title, setTitle] = useState('')
-  const [scope, setScope] = useState('personal')
+  const [scope, setScope] = useState(groupID ? 'group' : 'personal')
   const [type, setType] = useState('climbing')
   const [startAt, setStartAt] = useState('')
   const [endAt, setEndAt] = useState('')
@@ -37,6 +40,7 @@ export default function NewEventPage() {
         title,
         scope,
         type,
+        group_id: scope === 'group' ? groupID : null,
         start_at: toISODateTime(startAt),
         end_at: endAt ? toISODateTime(endAt) : null,
         location: location.trim() || null,

@@ -3,6 +3,9 @@ import { Link, Route, Routes } from 'react-router-dom'
 import { apiGet } from './lib/api'
 import CalendarPage from './CalendarPage'
 import EventDetailPage from './EventDetailPage'
+import FriendsPage from './FriendsPage'
+import GroupDetailPage from './GroupDetailPage'
+import GroupsPage from './GroupsPage'
 import LoginPage from './LoginPage'
 import NewEventPage from './NewEventPage'
 import ProfilePage from './ProfilePage'
@@ -36,6 +39,12 @@ function HomePage() {
           <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/events/new">
             创建活动
           </Link>
+          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/friends">
+            好友
+          </Link>
+          <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/groups">
+            群组
+          </Link>
           <Link className="rounded-full border border-white/30 px-4 py-2 text-white" to="/profile">
             个人页
           </Link>
@@ -56,6 +65,9 @@ export default function App() {
       <Route path="/schedules/:id" element={<ScheduleEditorPage />} />
       <Route path="/events/new" element={<NewEventPage />} />
       <Route path="/events/:slug" element={<EventDetailPage />} />
+      <Route path="/friends" element={<FriendsPage />} />
+      <Route path="/groups" element={<GroupsPage />} />
+      <Route path="/groups/:id" element={<GroupDetailPage />} />
     </Routes>
   )
 }
