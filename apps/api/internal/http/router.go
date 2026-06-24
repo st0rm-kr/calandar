@@ -6,6 +6,7 @@ import (
 	"github.com/bytedance/calandar/apps/api/internal/config"
 	"github.com/bytedance/calandar/apps/api/internal/events"
 	"github.com/bytedance/calandar/apps/api/internal/friends"
+	"github.com/bytedance/calandar/apps/api/internal/groups"
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
 	"github.com/bytedance/calandar/apps/api/internal/users"
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,7 @@ type Dependencies struct {
 	ScheduleService *schedules.Service
 	CalendarService *calendar.Service
 	FriendService   *friends.Service
+	GroupService    *groups.Service
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -81,6 +83,22 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/friends/requests/:id/accept", friendHandler.HandleAccept)
 	authenticated.POST("/friends/requests/:id/reject", friendHandler.HandleReject)
 	authenticated.DELETE("/friends/:userId", friendHandler.HandleDelete)
+
+	groupService := deps.GroupService
+	if groupService == nil {
+		groupService = groups.NewService(groups.NewRepository(deps.DB))
+	}
+	groupHandler := groups.NewHandler(groupService)
+	authenticated.GET("/groups", groupHandler.HandleList)
+	authenticated.POST("/groups", groupHandler.HandleCreate)
+	authenticated.POST("/groups/join", groupHandler.HandleJoin)
+	authenticated.GET("/groups/:id", groupHandler.HandleGetDetail)
+	authenticated.PATCH("/groups/:id", groupHandler.HandleUpdate)
+	authenticated.DELETE("/groups/:id", groupHandler.HandleDissolve)
+	authenticated.DELETE("/groups/:id/members/:userId", groupHandler.HandleLeave)
+	authenticated.POST("/group-invites", groupHandler.HandleInvite)
+	authenticated.POST("/group-invites/:id/accept", groupHandler.HandleAcceptInvite)
+	authenticated.POST("/group-invites/:id/reject", groupHandler.HandleRejectInvite)
 
 	return router
 }
