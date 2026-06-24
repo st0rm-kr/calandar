@@ -24,12 +24,35 @@ type Repository interface {
 	DeleteBetween(ctx context.Context, a, b uuid.UUID) error
 }
 
-type Service struct {
-	repo Repository
+type Notifier interface {
+	Notify(ctx context.Context, userID uuid.UUID, typ string, payload map[string]any) error
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type noopNotifier struct{}
+
+func (noopNotifier) Notify(context.Context, uuid.UUID, string, map[string]any) error {
+	return nil
+}
+
+type Service struct {
+	repo     Repository
+	notifier Notifier
+}
+
+type Option func(*Service)
+
+func WithNotifier(notifier Notifier) Option {
+	return func(s *Service) {
+		s.notifier = notifier
+	}
+}
+
+func NewService(repo Repository, opts ...Option) *Service {
+	s := &Service{repo: repo, notifier: noopNotifier{}}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeID uuid.UUID) (Friendship, error) {
@@ -48,15 +71,25 @@ func (s *Service) SendRequest(ctx context.Context, requesterID, addresseeID uuid
 		case StatusPending:
 			return existing, nil
 		case StatusRejected:
-			return s.repo.UpdateStatus(ctx, existing.ID, StatusPending)
+			created, err := s.repo.UpdateStatus(ctx, existing.ID, StatusPending)
+			if err != nil {
+				return Friendship{}, err
+			}
+			s.notifyRequest(ctx, created)
+			return created, nil
 		}
 	}
 
-	return s.repo.Create(ctx, Friendship{
+	created, err := s.repo.Create(ctx, Friendship{
 		RequesterID: requesterID,
 		AddresseeID: addresseeID,
 		Status:      StatusPending,
 	})
+	if err != nil {
+		return Friendship{}, err
+	}
+	s.notifyRequest(ctx, created)
+	return created, nil
 }
 
 func (s *Service) Accept(ctx context.Context, actorID uuid.UUID, requestID int64) (Friendship, error) {
@@ -78,7 +111,24 @@ func (s *Service) transition(ctx context.Context, actorID uuid.UUID, requestID i
 	if request.Status != StatusPending {
 		return Friendship{}, ErrRequestNotFound
 	}
-	return s.repo.UpdateStatus(ctx, request.ID, status)
+	updated, err := s.repo.UpdateStatus(ctx, request.ID, status)
+	if err != nil {
+		return Friendship{}, err
+	}
+	if status == StatusAccepted {
+		_ = s.notifier.Notify(ctx, updated.RequesterID, "friend_accepted", map[string]any{
+			"friendship_id": updated.ID,
+			"friend_id":     updated.AddresseeID.String(),
+		})
+	}
+	return updated, nil
+}
+
+func (s *Service) notifyRequest(ctx context.Context, friendship Friendship) {
+	_ = s.notifier.Notify(ctx, friendship.AddresseeID, "friend_request", map[string]any{
+		"friendship_id": friendship.ID,
+		"requester_id":  friendship.RequesterID.String(),
+	})
 }
 
 func (s *Service) ListFriends(ctx context.Context, userID uuid.UUID) ([]Friend, error) {

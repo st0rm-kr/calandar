@@ -38,6 +38,7 @@ type EventRepository interface {
 	CountGoingForUpdateExcludingUser(ctx context.Context, eventID int64, userID uuid.UUID) (int, error)
 	UpsertParticipant(ctx context.Context, participant Participant) (Participant, error)
 	FindParticipant(ctx context.Context, eventID int64, userID uuid.UUID) (Participant, bool, error)
+	ListParticipants(ctx context.Context, eventID int64) ([]Participant, error)
 	UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error
 	DeleteEventSchedule(ctx context.Context, userID uuid.UUID, eventID int64) error
 	DeleteEventSchedulesForEvent(ctx context.Context, eventID int64) error
@@ -50,6 +51,7 @@ type Service struct {
 	now              func() time.Time
 	friendAuthorizer FriendAuthorizer
 	groupAuthorizer  GroupAuthorizer
+	notifier         Notifier
 }
 
 type FriendAuthorizer interface {
@@ -58,6 +60,16 @@ type FriendAuthorizer interface {
 
 type GroupAuthorizer interface {
 	IsMember(ctx context.Context, groupID int64, userID uuid.UUID) (bool, error)
+}
+
+type Notifier interface {
+	Notify(ctx context.Context, userID uuid.UUID, typ string, payload map[string]any) error
+}
+
+type noopNotifier struct{}
+
+func (noopNotifier) Notify(context.Context, uuid.UUID, string, map[string]any) error {
+	return nil
 }
 
 type Option func(*Service)
@@ -74,8 +86,14 @@ func WithGroupAuthorizer(authorizer GroupAuthorizer) Option {
 	}
 }
 
+func WithNotifier(notifier Notifier) Option {
+	return func(s *Service) {
+		s.notifier = notifier
+	}
+}
+
 func NewService(repo EventRepository, opts ...Option) *Service {
-	s := &Service{repo: repo, now: time.Now}
+	s := &Service{repo: repo, now: time.Now, notifier: noopNotifier{}}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -196,8 +214,13 @@ func (s *Service) RSVP(ctx context.Context, userID uuid.UUID, eventID int64, inp
 
 func (s *Service) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (Event, error) {
 	var event Event
+	var participants []Participant
 	err := s.repo.Transaction(ctx, func(repo EventRepository) error {
 		cancelled, err := repo.Cancel(ctx, userID, eventID)
+		if err != nil {
+			return err
+		}
+		participants, err = repo.ListParticipants(ctx, eventID)
 		if err != nil {
 			return err
 		}
@@ -209,6 +232,15 @@ func (s *Service) Cancel(ctx context.Context, userID uuid.UUID, eventID int64) (
 	})
 	if err != nil {
 		return Event{}, err
+	}
+	for _, participant := range participants {
+		if participant.UserID == userID {
+			continue
+		}
+		_ = s.notifier.Notify(ctx, participant.UserID, "event_cancelled", map[string]any{
+			"event_id": event.ID,
+			"title":    event.Title,
+		})
 	}
 	return event, nil
 }
@@ -252,6 +284,10 @@ func (s *Service) Invite(ctx context.Context, actorID uuid.UUID, eventID int64, 
 		if err != nil {
 			return nil, err
 		}
+		_ = s.notifier.Notify(ctx, inviteeID, "event_invite", map[string]any{
+			"event_id": event.ID,
+			"title":    event.Title,
+		})
 		invited = append(invited, participant)
 	}
 	return invited, nil

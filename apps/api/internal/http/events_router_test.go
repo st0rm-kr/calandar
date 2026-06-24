@@ -178,6 +178,10 @@ func (r *fakeEventRepository) FindParticipant(ctx context.Context, eventID int64
 	return events.Participant{}, false, nil
 }
 
+func (r *fakeEventRepository) ListParticipants(ctx context.Context, eventID int64) ([]events.Participant, error) {
+	return nil, nil
+}
+
 func (r *fakeEventRepository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event events.Event, visibility string) error {
 	return nil
 }

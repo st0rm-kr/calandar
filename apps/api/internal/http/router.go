@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+
 	"github.com/bytedance/calandar/apps/api/internal/auth"
 	"github.com/bytedance/calandar/apps/api/internal/calendar"
 	"github.com/bytedance/calandar/apps/api/internal/config"
@@ -12,6 +14,7 @@ import (
 	"github.com/bytedance/calandar/apps/api/internal/schedules"
 	"github.com/bytedance/calandar/apps/api/internal/users"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -46,20 +49,28 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.GET("/users/search", userHandler.HandleSearch)
 
 	friendService := deps.FriendService
-	if friendService == nil {
-		friendService = friends.NewService(friends.NewRepository(deps.DB))
-	}
 	groupService := deps.GroupService
+	eventService := deps.EventService
+
+	notificationService := deps.NotificationService
+	if notificationService == nil {
+		notificationService = notifications.NewService(notifications.NewRepository(deps.DB))
+	}
+	notifier := notificationNotifier{service: notificationService}
+
+	if friendService == nil {
+		friendService = friends.NewService(friends.NewRepository(deps.DB), friends.WithNotifier(notifier))
+	}
 	if groupService == nil {
-		groupService = groups.NewService(groups.NewRepository(deps.DB))
+		groupService = groups.NewService(groups.NewRepository(deps.DB), groups.WithNotifier(notifier))
 	}
 
-	eventService := deps.EventService
 	if eventService == nil {
 		eventService = events.NewService(
 			events.NewRepository(deps.DB),
 			events.WithFriendAuthorizer(friendService),
 			events.WithGroupAuthorizer(groupService),
+			events.WithNotifier(notifier),
 		)
 	}
 	eventHandler := events.NewHandler(eventService)
@@ -110,10 +121,6 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.POST("/group-invites/:id/accept", groupHandler.HandleAcceptInvite)
 	authenticated.POST("/group-invites/:id/reject", groupHandler.HandleRejectInvite)
 
-	notificationService := deps.NotificationService
-	if notificationService == nil {
-		notificationService = notifications.NewService(notifications.NewRepository(deps.DB))
-	}
 	notificationHandler := notifications.NewHandler(notificationService)
 	authenticated.GET("/notifications", notificationHandler.HandleList)
 	authenticated.POST("/notifications/read-all", notificationHandler.HandleMarkAllRead)
@@ -127,4 +134,12 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.GET("/inbox", inboxHandler.HandleList)
 
 	return router
+}
+
+type notificationNotifier struct {
+	service *notifications.Service
+}
+
+func (n notificationNotifier) Notify(ctx context.Context, userID uuid.UUID, typ string, payload map[string]any) error {
+	return n.service.Create(ctx, userID, typ, notifications.Payload(payload))
 }

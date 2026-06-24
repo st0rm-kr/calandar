@@ -131,6 +131,15 @@ func (r *Repository) FindParticipant(ctx context.Context, eventID int64, userID 
 	return participant, true, nil
 }
 
+func (r *Repository) ListParticipants(ctx context.Context, eventID int64) ([]Participant, error) {
+	var participants []Participant
+	err := r.db.WithContext(ctx).
+		Where("event_id = ? AND deleted_at IS NULL", eventID).
+		Find(&participants).
+		Error
+	return participants, err
+}
+
 func (r *Repository) UpsertEventSchedule(ctx context.Context, userID uuid.UUID, event Event, visibility string) error {
 	return schedules.UpsertEventSchedule(ctx, r.db, userID, schedules.EventScheduleInput{
 		ID:       event.ID,

@@ -41,11 +41,34 @@ type Repository interface {
 }
 
 type Service struct {
-	repo Repository
+	repo     Repository
+	notifier Notifier
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+type Notifier interface {
+	Notify(ctx context.Context, userID uuid.UUID, typ string, payload map[string]any) error
+}
+
+type noopNotifier struct{}
+
+func (noopNotifier) Notify(context.Context, uuid.UUID, string, map[string]any) error {
+	return nil
+}
+
+type Option func(*Service)
+
+func WithNotifier(notifier Notifier) Option {
+	return func(s *Service) {
+		s.notifier = notifier
+	}
+}
+
+func NewService(repo Repository, opts ...Option) *Service {
+	s := &Service{repo: repo, notifier: noopNotifier{}}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 func (s *Service) CreateGroup(ctx context.Context, ownerID uuid.UUID, input CreateGroupInput) (Group, error) {
@@ -226,15 +249,32 @@ func (s *Service) Invite(ctx context.Context, actorID uuid.UUID, groupID int64, 
 		case InviteStatusPending, InviteStatusAccepted:
 			return existing, nil
 		case InviteStatusRejected:
-			return s.repo.UpdateInviteStatus(ctx, existing.ID, InviteStatusPending)
+			reopened, err := s.repo.UpdateInviteStatus(ctx, existing.ID, InviteStatusPending)
+			if err != nil {
+				return GroupInvite{}, err
+			}
+			s.notifyInvite(ctx, reopened)
+			return reopened, nil
 		}
 	}
 
-	return s.repo.CreateInvite(ctx, GroupInvite{
+	created, err := s.repo.CreateInvite(ctx, GroupInvite{
 		GroupID:   groupID,
 		InviterID: actorID,
 		InviteeID: inviteeID,
 		Status:    InviteStatusPending,
+	})
+	if err != nil {
+		return GroupInvite{}, err
+	}
+	s.notifyInvite(ctx, created)
+	return created, nil
+}
+
+func (s *Service) notifyInvite(ctx context.Context, invite GroupInvite) {
+	_ = s.notifier.Notify(ctx, invite.InviteeID, "group_invite", map[string]any{
+		"invite_id": invite.ID,
+		"group_id":  invite.GroupID,
 	})
 }
 
