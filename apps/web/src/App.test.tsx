@@ -189,6 +189,7 @@ describe('App', () => {
     mockedRsvpEvent.mockResolvedValue({
       participant: { id: 1, event_id: 12, rsvp: 'going', add_to_calendar: true },
       conflicts: [],
+      going_count: 3,
     })
 
     renderApp('/e/abc123def4')
@@ -206,6 +207,8 @@ describe('App', () => {
         visibility: 'busy_only',
       })
     })
+    expect(await screen.findByText('已加入活动')).toBeInTheDocument()
+    expect(screen.getByText('3 / 6 人已参加')).toBeInTheDocument()
   })
 
   it('renders a 404 for unknown routes', () => {

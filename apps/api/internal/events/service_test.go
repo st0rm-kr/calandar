@@ -187,8 +187,57 @@ func TestRSVPGoingInsertsParticipantAndEventSchedule(t *testing.T) {
 	if result.Participant.RSVP != RSVPGoing {
 		t.Fatalf("expected result participant going, got %+v", result.Participant)
 	}
+	if result.GoingCount != 1 {
+		t.Fatalf("expected going count 1, got %d", result.GoingCount)
+	}
 	if len(result.Conflicts) != 1 || result.Conflicts[0].ID != 2 {
 		t.Fatalf("expected RSVP result to filter self event conflict, got %+v", result.Conflicts)
+	}
+}
+
+func TestRepeatedRSVPUpdatesSingleParticipantCount(t *testing.T) {
+	repo := newFakeEventRepository()
+	service := NewService(repo)
+	userID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	event := repo.seedEvent(activeEvent())
+
+	result, err := service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: true,
+		Visibility:    "busy_only",
+	})
+	if err != nil {
+		t.Fatalf("first rsvp going: %v", err)
+	}
+	if result.GoingCount != 1 {
+		t.Fatalf("expected first going count 1, got %d", result.GoingCount)
+	}
+
+	result, err = service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPGoing,
+		AddToCalendar: true,
+		Visibility:    "busy_only",
+	})
+	if err != nil {
+		t.Fatalf("second rsvp going: %v", err)
+	}
+	if result.GoingCount != 1 {
+		t.Fatalf("expected repeated going count to stay 1, got %d", result.GoingCount)
+	}
+
+	result, err = service.RSVP(context.Background(), userID, event.ID, RSVPInput{
+		RSVP:          RSVPNotGoing,
+		AddToCalendar: false,
+	})
+	if err != nil {
+		t.Fatalf("rsvp not going: %v", err)
+	}
+	if result.GoingCount != 0 {
+		t.Fatalf("expected not going count 0, got %d", result.GoingCount)
+	}
+
+	if len(repo.participants) != 1 {
+		t.Fatalf("expected one participant row, got %d", len(repo.participants))
 	}
 }
 
@@ -501,7 +550,13 @@ func (r *fakeEventRepository) FindByIDForUpdate(ctx context.Context, id int64) (
 }
 
 func (r *fakeEventRepository) CountGoing(ctx context.Context, eventID int64) (int, error) {
-	return r.goingCounts[eventID], nil
+	count := r.goingCounts[eventID]
+	for _, participant := range r.participants {
+		if participant.EventID == eventID && participant.RSVP == RSVPGoing && participant.DeletedAt == nil {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (r *fakeEventRepository) ListMine(ctx context.Context, ownerID uuid.UUID) ([]Event, error) {

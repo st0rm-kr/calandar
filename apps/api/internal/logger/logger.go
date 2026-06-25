@@ -2,7 +2,9 @@ package logger
 
 import (
 	"flag"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -28,10 +30,17 @@ func ConfigureFromEnv() {
 			levelName = "INFO"
 		}
 
-		setFlag("logtostderr", envDefault("LOG_TO_STDERR", "true"))
+		setFlag("logtostderr", envDefault("LOG_TO_STDERR", "false"))
+		setFlag("alsologtostderr", envDefault("LOG_ALSO_TO_STDERR", "true"))
 		setFlag("stderrthreshold", envDefault("LOG_STDERR_THRESHOLD", "ERROR"))
-		if logDir := strings.TrimSpace(os.Getenv("LOG_DIR")); logDir != "" {
-			setFlag("log_dir", logDir)
+		logDir := strings.TrimSpace(os.Getenv("LOG_DIR"))
+		if logDir == "" {
+			logDir = "logs"
+		}
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "failed to create log dir %q: %v\n", logDir, err)
+		} else {
+			setFlag("log_dir", filepath.Clean(logDir))
 		}
 
 		switch levelName {

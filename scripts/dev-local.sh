@@ -5,6 +5,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOG_DIR="${TMPDIR:-/tmp}/calandar-dev"
+APP_LOG_DIR="$REPO_ROOT/logs"
 SUPABASE_LOG="$LOG_DIR/supabase.log"
 API_LOG="$LOG_DIR/api.log"
 WEB_LOG="$LOG_DIR/web.log"
@@ -25,6 +26,7 @@ Start the local Hangout development stack:
   4. Health checks for API direct access and Vite /api proxy
 
 Logs:
+  $APP_LOG_DIR
   $SUPABASE_LOG
   $API_LOG
   $WEB_LOG
@@ -151,8 +153,10 @@ start_api() {
     cd "$REPO_ROOT"
     API_ADDR="127.0.0.1:8080" \
       DATABASE_URL="$database_url" \
+      LOG_DIR="$APP_LOG_DIR" \
       LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
-      LOG_TO_STDERR="${LOG_TO_STDERR:-true}" \
+      LOG_TO_STDERR="${LOG_TO_STDERR:-false}" \
+      LOG_ALSO_TO_STDERR="${LOG_ALSO_TO_STDERR:-true}" \
       SUPABASE_JWT_SECRET="$JWT_SECRET" \
       SUPABASE_JWKS_URL="$jwks_url" \
       go run ./apps/api/cmd/api
@@ -175,7 +179,8 @@ monitor_processes() {
   log "Development stack is running."
   log "Web: $WEB_URL"
   log "API health: $BACKEND_URL/api/health"
-  log "Logs: $LOG_DIR"
+  log "Glog files: $APP_LOG_DIR"
+  log "Process logs: $LOG_DIR"
   log "Press Ctrl+C to stop API and web. Supabase will remain running."
 
   while true; do

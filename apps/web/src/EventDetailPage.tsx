@@ -95,7 +95,10 @@ export default function EventDetailPage({ session }: EventDetailPageProps) {
         visibility,
       })
       setRsvpResult(result)
-      setMessage('RSVP 已更新')
+      setDetail((current) =>
+        current ? { ...current, going_count: result.going_count } : current,
+      )
+      setMessage(rsvpSuccessMessage(rsvp))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'RSVP 失败')
     } finally {
@@ -253,6 +256,19 @@ export default function EventDetailPage({ session }: EventDetailPageProps) {
       </div>
     </Shell>
   )
+}
+
+function rsvpSuccessMessage(rsvp: EventRSVP): string {
+  switch (rsvp) {
+    case 'going':
+      return '已加入活动'
+    case 'not_going':
+      return '已标记为不参加'
+    case 'maybe':
+      return '已标记为可能参加'
+    default:
+      return 'RSVP 已更新'
+  }
 }
 
 function Detail({ label, value }: { label: string; value: string }) {

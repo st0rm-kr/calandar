@@ -203,7 +203,11 @@ func (s *Service) RSVP(ctx context.Context, userID uuid.UUID, eventID int64, inp
 			return err
 		}
 		conflicts = filterEventSelfConflict(conflicts, event.ID)
-		result = RSVPResult{Participant: participant, Conflicts: conflicts}
+		goingCount, err := repo.CountGoing(ctx, event.ID)
+		if err != nil {
+			return err
+		}
+		result = RSVPResult{Participant: participant, Conflicts: conflicts, GoingCount: goingCount}
 		return nil
 	})
 	if err != nil {

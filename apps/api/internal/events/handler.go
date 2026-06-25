@@ -168,11 +168,12 @@ func (h *Handler) HandleRSVP(c *gin.Context) {
 		return
 	}
 	logger.Infof(
-		"event_rsvp_updated user_id=%s event_id=%d rsvp=%s add_to_calendar=%t conflict_count=%d",
+		"event_rsvp_updated user_id=%s event_id=%d rsvp=%s add_to_calendar=%t going_count=%d conflict_count=%d",
 		userID,
 		eventID,
 		result.Participant.RSVP,
 		addToCalendar,
+		result.GoingCount,
 		len(result.Conflicts),
 	)
 	respondOK(c, http.StatusOK, result)

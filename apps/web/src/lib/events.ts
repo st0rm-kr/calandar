@@ -66,6 +66,7 @@ export type RSVPResult = {
     add_to_calendar: boolean
   }
   conflicts: ScheduleConflict[]
+  going_count: number
 }
 
 async function authHeaders(hasBody = false): Promise<Record<string, string>> {

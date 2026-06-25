@@ -94,4 +94,5 @@ type ScheduleConflict struct {
 type RSVPResult struct {
 	Participant Participant        `json:"participant"`
 	Conflicts   []ScheduleConflict `json:"conflicts"`
+	GoingCount  int                `json:"going_count"`
 }

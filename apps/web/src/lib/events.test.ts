@@ -136,6 +136,7 @@ describe('events API', () => {
               add_to_calendar: true,
             },
             conflicts: [],
+            going_count: 1,
           },
           error: null,
         }),

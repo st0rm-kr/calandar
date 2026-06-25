@@ -16,8 +16,6 @@ import {
 import { getCalendar } from './lib/calendar'
 import type { CalendarFilter, CalendarItem } from './lib/calendar'
 import { rsvpEvent } from './lib/events'
-import { AvatarStack } from './components/Avatar'
-import type { AvatarPerson } from './components/Avatar'
 import { EmptyState } from './components/EmptyState'
 import { ErrorState } from './components/ErrorState'
 import { LoadingState } from './components/LoadingState'
@@ -46,28 +44,6 @@ const colorHero: Record<string, string> = {
   blue: 'bg-gradient-to-br from-brand via-rose to-tangerine',
   green: 'bg-gradient-to-br from-tangerine via-rose to-grass',
   gray: 'bg-gradient-to-br from-rose via-grape to-brand',
-}
-
-const attendeeInitials = 'ALMKYJRTSNDBOP'
-
-function hashSeed(seed: string): number {
-  let hash = 0
-  for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(index)
-    hash |= 0
-  }
-  return Math.abs(hash)
-}
-
-// Placeholder attendees derived from the event until the backend returns
-// real participant avatars.
-function derivedAttendees(item: CalendarItem): AvatarPerson[] {
-  const seed = hashSeed(`${item.id}-${item.title}`)
-  const count = 2 + (seed % 3)
-  return Array.from({ length: count }, (_, index) => ({
-    id: `${item.id}-${index}`,
-    name: attendeeInitials[(seed + index * 5) % attendeeInitials.length]!,
-  }))
 }
 
 function dayKey(date: Date): string {
@@ -116,6 +92,7 @@ export default function CalendarPage() {
   const [filter, setFilter] = useState<CalendarFilter>('all')
   const [items, setItems] = useState<CalendarItem[]>([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const [submitting, setSubmitting] = useState<Set<number>>(new Set())
@@ -244,8 +221,11 @@ export default function CalendarPage() {
         add_to_calendar: going,
         visibility: 'busy_only',
       })
+      setError('')
+      setNotice(going ? '已加入活动，已同步到你的日历' : '已标记为不参加')
       setNonce((value) => value + 1)
     } catch (err) {
+      setNotice('')
       setError(err instanceof Error ? err.message : 'RSVP 失败')
     } finally {
       setSubmitting((prev) => {
@@ -331,6 +311,11 @@ export default function CalendarPage() {
           <div className="mt-5">
             <ErrorState message={error} onRetry={() => setNonce((v) => v + 1)} />
           </div>
+        ) : null}
+        {notice ? (
+          <p className="mt-5 rounded-2xl border border-grass/30 bg-grass-soft px-4 py-3 text-sm font-bold text-grass">
+            {notice}
+          </p>
         ) : null}
 
         <div className="mt-6 grid grid-cols-7 gap-2 text-center text-xs font-bold uppercase tracking-[0.12em] text-muted lg:gap-3">
@@ -563,7 +548,6 @@ type HangoutCardProps = {
 function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
   const block = colorHero[item.color] ?? colorHero.blue
   const soft = colorSoft[item.color] ?? colorSoft.blue
-  const attendees = derivedAttendees(item)
   return (
     <article className="overflow-hidden rounded-3xl border border-white/10 bg-black/45 shadow-card backdrop-blur">
       <div className={`relative h-40 ${block} p-5 text-white`}>
@@ -588,7 +572,9 @@ function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
           </span>
         ) : null}
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <AvatarStack people={attendees} />
+          <p className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-muted">
+            真实报名人数在活动详情中展示
+          </p>
           <div className="flex items-center gap-2">
             <button
               className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-tangerine via-rose to-brand px-4 py-2 text-sm font-bold text-white shadow-pop transition-transform duration-200 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
