@@ -9,8 +9,12 @@ APP_LOG_DIR="$REPO_ROOT/logs"
 SUPABASE_LOG="$LOG_DIR/supabase.log"
 API_LOG="$LOG_DIR/api.log"
 WEB_LOG="$LOG_DIR/web.log"
-BACKEND_URL="http://127.0.0.1:8080"
-WEB_URL="http://127.0.0.1:5173"
+DEFAULT_BACKEND_PORT="${BACKEND_PORT:-8080}"
+DEFAULT_WEB_PORT="${WEB_PORT:-5173}"
+BACKEND_PORT="$DEFAULT_BACKEND_PORT"
+WEB_PORT="$DEFAULT_WEB_PORT"
+BACKEND_URL=""
+WEB_URL=""
 
 API_PID=""
 WEB_PID=""
@@ -21,8 +25,8 @@ Usage: scripts/dev-local.sh
 
 Start the local Hangout development stack:
   1. Supabase local services
-  2. Gin API on 127.0.0.1:8080
-  3. Vite web app on 127.0.0.1:5173
+  2. Gin API on 127.0.0.1:\$BACKEND_PORT (defaults to 8080, auto-falls back)
+  3. Vite web app on 127.0.0.1:\$WEB_PORT (defaults to 5173, auto-falls back)
   4. Health checks for API direct access and Vite /api proxy
 
 Logs:
@@ -67,10 +71,44 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
-ensure_port_free() {
+port_is_in_use() {
   local port="$1"
-  if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    die "Port $port is already in use. Stop the existing process before running this script."
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return
+  fi
+
+  die "Missing required command: lsof"
+}
+
+pick_free_port() {
+  local requested_port="$1"
+  local port="$requested_port"
+  local max_port="${2:-65535}"
+
+  while (( port <= max_port )); do
+    if ! port_is_in_use "$port"; then
+      printf '%s' "$port"
+      return 0
+    fi
+    ((port++))
+  done
+
+  die "Could not find a free port starting from $requested_port"
+}
+
+configure_ports() {
+  BACKEND_PORT="$(pick_free_port "$DEFAULT_BACKEND_PORT")"
+  WEB_PORT="$(pick_free_port "$DEFAULT_WEB_PORT")"
+  BACKEND_URL="http://127.0.0.1:$BACKEND_PORT"
+  WEB_URL="http://127.0.0.1:$WEB_PORT"
+
+  if [[ "$BACKEND_PORT" != "$DEFAULT_BACKEND_PORT" ]]; then
+    log "Port $DEFAULT_BACKEND_PORT is busy, API will use $BACKEND_PORT"
+  fi
+
+  if [[ "$WEB_PORT" != "$DEFAULT_WEB_PORT" ]]; then
+    log "Port $DEFAULT_WEB_PORT is busy, web will use $WEB_PORT"
   fi
 }
 
@@ -151,7 +189,7 @@ start_api() {
   log "Starting API on $BACKEND_URL"
   (
     cd "$REPO_ROOT"
-    API_ADDR="127.0.0.1:8080" \
+    API_ADDR="127.0.0.1:$BACKEND_PORT" \
       DATABASE_URL="$database_url" \
       LOG_DIR="$APP_LOG_DIR" \
       LOG_LEVEL="${LOG_LEVEL:-DEBUG}" \
@@ -170,7 +208,8 @@ start_web() {
     cd "$REPO_ROOT/apps/web"
     VITE_SUPABASE_URL="$API_URL" \
       VITE_SUPABASE_ANON_KEY="$ANON_KEY" \
-      npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+      VITE_API_PROXY_TARGET="$BACKEND_URL" \
+      npm run dev -- --host 127.0.0.1 --port "$WEB_PORT" --strictPort
   ) >"$WEB_LOG" 2>&1 &
   WEB_PID=$!
 }
@@ -208,6 +247,7 @@ main() {
   require_command go
   require_command npm
   require_command curl
+  require_command lsof
 
   mkdir -p "$LOG_DIR"
   : >"$SUPABASE_LOG"
@@ -217,8 +257,7 @@ main() {
   trap 'exit 130' INT TERM
   trap cleanup EXIT
 
-  ensure_port_free 8080
-  ensure_port_free 5173
+  configure_ports
 
   log "Starting Supabase local services"
   if ! (cd "$REPO_ROOT" && supabase start >"$SUPABASE_LOG" 2>&1); then
