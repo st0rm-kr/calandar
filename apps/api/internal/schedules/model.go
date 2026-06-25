@@ -52,3 +52,16 @@ type Conflict struct {
 	Source     string     `json:"source"`
 	EventID    *int64     `json:"event_id"`
 }
+
+type EventParticipantPreview struct {
+	ID          uuid.UUID `json:"id"`
+	DisplayName string    `json:"display_name"`
+	AvatarURL   *string   `json:"avatar_url"`
+}
+
+type EventParticipationSummary struct {
+	EventID             int64                     `json:"event_id"`
+	ViewerRSVP          *string                   `json:"viewer_rsvp"`
+	GoingCount          int                       `json:"going_count"`
+	ParticipantsPreview []EventParticipantPreview `json:"participants_preview"`
+}

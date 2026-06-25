@@ -18,6 +18,13 @@ export type CalendarItem = {
   color: CalendarColor
   has_conflict: boolean
   event_id: number | null
+  viewer_rsvp: 'invited' | 'going' | 'not_going' | 'maybe' | null
+  going_count: number
+  participants_preview: Array<{
+    id: string
+    display_name: string
+    avatar_url: string | null
+  }> | null
 }
 
 export type CalendarFilter = 'all' | 'groups' | 'friends'

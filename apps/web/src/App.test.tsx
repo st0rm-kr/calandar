@@ -6,6 +6,7 @@ import { apiGet } from './lib/api'
 import type { EventDetail } from './lib/events'
 import { getEventBySlug, rsvpEvent } from './lib/events'
 import { getCalendar } from './lib/calendar'
+import type { CalendarItem } from './lib/calendar'
 import { getInbox } from './lib/inbox'
 import { supabase } from './lib/supabase'
 
@@ -77,6 +78,30 @@ function createEventDetail(slug: string, title: string): EventDetail {
       share_slug: slug,
     },
     going_count: 2,
+  }
+}
+
+function createHomeEvent(overrides: Partial<CalendarItem> = {}): CalendarItem {
+  const start = new Date()
+  start.setHours(20, 0, 0, 0)
+  return {
+    id: 21,
+    kind: 'event',
+    title: '周末攀岩',
+    start_at: start.toISOString(),
+    end_at: null,
+    location: '岩馆',
+    visibility: 'public',
+    color: 'blue',
+    has_conflict: false,
+    event_id: 12,
+    viewer_rsvp: null,
+    going_count: 2,
+    participants_preview: [
+      { id: 'user-2', display_name: 'Alex', avatar_url: null },
+      { id: 'user-3', display_name: 'Mia', avatar_url: null },
+    ],
+    ...overrides,
   }
 }
 
@@ -163,6 +188,63 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByText('时间流')).toBeInTheDocument()
     })
+  })
+
+  it('updates the home event card after joining', async () => {
+    setSession({ access_token: 'token' })
+    mockedGetCalendar.mockResolvedValue([createHomeEvent()])
+    mockedRsvpEvent.mockResolvedValue({
+      participant: { id: 1, event_id: 12, rsvp: 'going', add_to_calendar: true },
+      conflicts: [],
+      going_count: 3,
+    })
+
+    renderApp('/')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '加入' })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '加入' }))
+
+    expect(await screen.findByText('已加入活动，已同步到你的日历')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取消参加' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '邀请好友' })).toBeInTheDocument()
+    expect(screen.getByText('3 人已参加')).toBeInTheDocument()
+  })
+
+  it('collapses dismissed home event cards and expands them on hover', async () => {
+    setSession({ access_token: 'token' })
+    mockedGetCalendar.mockResolvedValue([createHomeEvent()])
+    mockedRsvpEvent.mockResolvedValue({
+      participant: {
+        id: 1,
+        event_id: 12,
+        rsvp: 'not_going',
+        add_to_calendar: false,
+      },
+      conflicts: [],
+      going_count: 2,
+    })
+
+    renderApp('/')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '下次一定' })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '下次一定' }))
+
+    const collapsed = await screen.findByLabelText(
+      '已收纳活动 周末攀岩，悬停后展开',
+    )
+    expect(screen.getByText('已收纳')).toBeInTheDocument()
+
+    fireEvent.mouseEnter(collapsed)
+
+    expect(
+      await screen.findByRole('button', { name: '重新加入' }),
+    ).toBeInTheDocument()
   })
 
   it('loads the event detail route by slug', async () => {

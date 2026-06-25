@@ -16,6 +16,8 @@ import {
 import { getCalendar } from './lib/calendar'
 import type { CalendarFilter, CalendarItem } from './lib/calendar'
 import { rsvpEvent } from './lib/events'
+import { AvatarStack } from './components/Avatar'
+import type { AvatarPerson } from './components/Avatar'
 import { EmptyState } from './components/EmptyState'
 import { ErrorState } from './components/ErrorState'
 import { LoadingState } from './components/LoadingState'
@@ -96,6 +98,10 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true)
   const [nonce, setNonce] = useState(0)
   const [submitting, setSubmitting] = useState<Set<number>>(new Set())
+  const [cardMessages, setCardMessages] = useState<Record<number, string>>({})
+  const [expandedDismissed, setExpandedDismissed] = useState<Set<number>>(
+    () => new Set(),
+  )
   const [flashKey, setFlashKey] = useState<string | null>(null)
 
   const timelineRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -216,14 +222,39 @@ export default function CalendarPage() {
     const eventID = item.event_id
     setSubmitting((prev) => new Set(prev).add(eventID))
     try {
-      await rsvpEvent(eventID, {
+      const result = await rsvpEvent(eventID, {
         rsvp: going ? 'going' : 'not_going',
         add_to_calendar: going,
         visibility: 'busy_only',
       })
+      setItems((current) =>
+        current.map((candidate) =>
+          candidate.event_id === eventID
+            ? {
+                ...candidate,
+                viewer_rsvp: result.participant.rsvp,
+                going_count: result.going_count,
+              }
+            : candidate,
+        ),
+      )
+      setCardMessages((current) => ({
+        ...current,
+        [eventID]: going
+          ? '已加入活动，已同步到你的日历'
+          : '已收纳，悬停卡片可重新加入',
+      }))
+      setExpandedDismissed((current) => {
+        const next = new Set(current)
+        if (going) {
+          next.delete(eventID)
+        } else {
+          next.delete(eventID)
+        }
+        return next
+      })
       setError('')
-      setNotice(going ? '已加入活动，已同步到你的日历' : '已标记为不参加')
-      setNonce((value) => value + 1)
+      setNotice('')
     } catch (err) {
       setNotice('')
       setError(err instanceof Error ? err.message : 'RSVP 失败')
@@ -234,6 +265,28 @@ export default function CalendarPage() {
         return next
       })
     }
+  }
+
+  function setDismissedCardExpanded(eventID: number, expanded: boolean) {
+    setExpandedDismissed((current) => {
+      const next = new Set(current)
+      if (expanded) {
+        next.add(eventID)
+      } else {
+        next.delete(eventID)
+      }
+      return next
+    })
+  }
+
+  function handleInviteEntrance(item: CalendarItem) {
+    if (!item.event_id) {
+      return
+    }
+    setCardMessages((current) => ({
+      ...current,
+      [item.event_id!]: '邀请好友入口已准备好，可从好友页选择好友',
+    }))
   }
 
   return (
@@ -520,6 +573,16 @@ export default function CalendarPage() {
                       <HangoutCard
                         item={item}
                         key={`event-${item.id}`}
+                        dismissedExpanded={
+                          item.event_id
+                            ? expandedDismissed.has(item.event_id)
+                            : false
+                        }
+                        message={
+                          item.event_id ? cardMessages[item.event_id] : undefined
+                        }
+                        onDismissedHoverChange={setDismissedCardExpanded}
+                        onInvite={handleInviteEntrance}
                         onRSVP={quickRSVP}
                         submitting={
                           item.event_id ? submitting.has(item.event_id) : false
@@ -542,14 +605,65 @@ export default function CalendarPage() {
 type HangoutCardProps = {
   item: CalendarItem
   submitting: boolean
+  dismissedExpanded: boolean
+  message?: string
+  onDismissedHoverChange: (eventID: number, expanded: boolean) => void
+  onInvite: (item: CalendarItem) => void
   onRSVP: (item: CalendarItem, going: boolean) => void
 }
 
-function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
+function HangoutCard({
+  item,
+  submitting,
+  dismissedExpanded,
+  message,
+  onDismissedHoverChange,
+  onInvite,
+  onRSVP,
+}: HangoutCardProps) {
   const block = colorHero[item.color] ?? colorHero.blue
   const soft = colorSoft[item.color] ?? colorSoft.blue
+  const isGoing = item.viewer_rsvp === 'going'
+  const isDismissed = item.viewer_rsvp === 'not_going'
+  const isExpanded = !isDismissed || dismissedExpanded
+  const eventID = item.event_id
+  const people = participantPeople(item)
+
+  if (isDismissed && !isExpanded) {
+    return (
+      <article
+        aria-label={`已收纳活动 ${item.title}，悬停后展开`}
+        className="group cursor-pointer rounded-3xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur transition-all duration-200 hover:border-brand/40 hover:bg-black/55"
+        onFocus={() => eventID && onDismissedHoverChange(eventID, true)}
+        onMouseEnter={() => eventID && onDismissedHoverChange(eventID, true)}
+        tabIndex={0}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted">
+              已收纳
+            </p>
+            <h3 className="mt-1 max-w-xs truncate text-lg font-bold">
+              {item.title}
+            </h3>
+          </div>
+          <p className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-muted">
+            {item.going_count} 人已参加
+          </p>
+        </div>
+      </article>
+    )
+  }
+
   return (
-    <article className="overflow-hidden rounded-3xl border border-white/10 bg-black/45 shadow-card backdrop-blur">
+    <article
+      className={`overflow-hidden rounded-3xl border border-white/10 bg-black/45 shadow-card backdrop-blur ${
+        isDismissed ? 'ring-1 ring-brand/30' : ''
+      }`}
+      onMouseLeave={() =>
+        isDismissed && eventID && onDismissedHoverChange(eventID, false)
+      }
+    >
       <div className={`relative h-40 ${block} p-5 text-white`}>
         <div className="absolute right-5 top-5 h-16 w-16 rounded-3xl bg-white/20 blur-[1px]" />
         <div className="absolute bottom-5 right-16 h-10 w-24 rounded-full bg-white/15" />
@@ -571,46 +685,106 @@ function HangoutCard({ item, submitting, onRSVP }: HangoutCardProps) {
             时间冲突
           </span>
         ) : null}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-white/[0.04] p-3">
+          <div>
+            <p className="text-sm font-bold text-ink">
+              {item.going_count} 人已参加
+            </p>
+            <p className="text-xs font-semibold text-muted">
+              {isGoing
+                ? '你已加入'
+                : isDismissed
+                  ? '已收纳，悬停可重新加入'
+                  : '看看谁也想去'}
+            </p>
+          </div>
+          {people.length > 0 ? (
+            <AvatarStack people={people} size="sm" />
+          ) : (
+            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-muted">
+              等待第一个参与者
+            </span>
+          )}
+        </div>
+        {message ? (
+          <p className="mt-4 rounded-2xl border border-grass/30 bg-grass-soft px-4 py-3 text-sm font-bold text-grass">
+            {message}
+          </p>
+        ) : null}
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-muted">
-            真实报名人数在活动详情中展示
+            {isGoing ? '报名已确认' : isDismissed ? '已放到一边' : '可快速 RSVP'}
           </p>
           <div className="flex items-center gap-2">
-            <button
-              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-tangerine via-rose to-brand px-4 py-2 text-sm font-bold text-white shadow-pop transition-transform duration-200 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={submitting}
-              onClick={() => onRSVP(item, true)}
-              type="button"
-            >
-              <svg
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.4}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M12 5v14M5 12h14"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              加入
-            </button>
-            <button
-              className={`cursor-pointer rounded-full px-4 py-2 text-sm font-bold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${soft}`}
-              disabled={submitting}
-              onClick={() => onRSVP(item, false)}
-              type="button"
-            >
-              下次一定
-            </button>
+            {isGoing ? (
+              <>
+                <button
+                  className={`cursor-pointer rounded-full px-4 py-2 text-sm font-bold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${soft}`}
+                  disabled={submitting}
+                  onClick={() => onRSVP(item, false)}
+                  type="button"
+                >
+                  取消参加
+                </button>
+                <button
+                  className="cursor-pointer rounded-full bg-white px-4 py-2 text-sm font-bold text-canvas transition-transform duration-200 hover:scale-105"
+                  onClick={() => onInvite(item)}
+                  type="button"
+                >
+                  邀请好友
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-gradient-to-r from-tangerine via-rose to-brand px-4 py-2 text-sm font-bold text-white shadow-pop transition-transform duration-200 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={submitting}
+                  onClick={() => onRSVP(item, true)}
+                  type="button"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.4}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      d="M12 5v14M5 12h14"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  {isDismissed ? '重新加入' : '加入'}
+                </button>
+                <button
+                  className={`cursor-pointer rounded-full px-4 py-2 text-sm font-bold transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${soft}`}
+                  disabled={submitting}
+                  onClick={() => onRSVP(item, false)}
+                  type="button"
+                >
+                  下次一定
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
     </article>
   )
+}
+
+function participantPeople(item: CalendarItem): AvatarPerson[] {
+  const preview = (item.participants_preview ?? []).map((person) => ({
+    id: person.id,
+    name: person.display_name,
+    src: person.avatar_url,
+  }))
+  if (preview.length === 0 && item.viewer_rsvp === 'going') {
+    return [{ id: 'viewer', name: '你' }]
+  }
+  return preview
 }
 
 function ScheduleCard({ item }: { item: CalendarItem }) {

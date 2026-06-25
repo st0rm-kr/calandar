@@ -23,11 +23,27 @@ func ptr[T any](value T) *T {
 }
 
 type fakeScheduleReader struct {
-	rows []schedules.Schedule
+	rows            []schedules.Schedule
+	participantRows []schedules.Schedule
+	summaries       map[int64]EventParticipationSummary
 }
 
 func (r fakeScheduleReader) ListByRange(_ context.Context, _ uuid.UUID, _ time.Time, _ time.Time) ([]schedules.Schedule, error) {
 	return r.rows, nil
+}
+
+func (r fakeScheduleReader) ListParticipantEventsByRange(_ context.Context, _ uuid.UUID, _ time.Time, _ time.Time) ([]schedules.Schedule, error) {
+	return r.participantRows, nil
+}
+
+func (r fakeScheduleReader) ListEventParticipationSummaries(_ context.Context, _ uuid.UUID, eventIDs []int64) (map[int64]EventParticipationSummary, error) {
+	result := make(map[int64]EventParticipationSummary, len(eventIDs))
+	for _, id := range eventIDs {
+		if summary, ok := r.summaries[id]; ok {
+			result[id] = summary
+		}
+	}
+	return result, nil
 }
 
 func TestCalendarIncludesManualAndEventSchedules(t *testing.T) {
@@ -73,6 +89,100 @@ func TestCalendarIncludesManualAndEventSchedules(t *testing.T) {
 	}
 	if byID[2].Kind != "event" || byID[2].Color != "blue" {
 		t.Fatalf("expected event schedule to be blue event, got %+v", byID[2])
+	}
+}
+
+func TestCalendarIncludesEventParticipationSummary(t *testing.T) {
+	userID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	friendID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	eventID := int64(9)
+	rsvp := "going"
+	reader := fakeScheduleReader{
+		rows: []schedules.Schedule{
+			{
+				ID:         2,
+				UserID:     userID,
+				Title:      "Climb event",
+				StartAt:    mustTime(t, "2026-06-12T08:00:00Z"),
+				EndAt:      ptr(mustTime(t, "2026-06-12T09:00:00Z")),
+				Visibility: schedules.VisibilityPublic,
+				Source:     schedules.SourceEvent,
+				EventID:    &eventID,
+			},
+		},
+		summaries: map[int64]EventParticipationSummary{
+			eventID: {
+				EventID:    eventID,
+				ViewerRSVP: &rsvp,
+				GoingCount: 2,
+				ParticipantsPreview: []EventParticipantPreview{
+					{ID: userID, DisplayName: "Lily"},
+					{ID: friendID, DisplayName: "Alex"},
+				},
+			},
+		},
+	}
+	service := NewService(reader)
+
+	items, err := service.Month(context.Background(), userID, mustTime(t, "2026-06-01T00:00:00Z"), mustTime(t, "2026-07-01T00:00:00Z"), "all")
+	if err != nil {
+		t.Fatalf("calendar month: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 calendar item, got %d", len(items))
+	}
+
+	item := items[0]
+	if item.ViewerRSVP == nil || *item.ViewerRSVP != "going" {
+		t.Fatalf("expected viewer rsvp going, got %+v", item.ViewerRSVP)
+	}
+	if item.GoingCount != 2 {
+		t.Fatalf("expected going count 2, got %d", item.GoingCount)
+	}
+	if len(item.ParticipantsPreview) != 2 || item.ParticipantsPreview[0].DisplayName != "Lily" {
+		t.Fatalf("expected participant preview to be included, got %+v", item.ParticipantsPreview)
+	}
+}
+
+func TestCalendarIncludesDismissedParticipantEvents(t *testing.T) {
+	userID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	eventID := int64(9)
+	rsvp := "not_going"
+	reader := fakeScheduleReader{
+		participantRows: []schedules.Schedule{
+			{
+				ID:         88,
+				UserID:     userID,
+				Title:      "Climb event",
+				StartAt:    mustTime(t, "2026-06-12T08:00:00Z"),
+				EndAt:      ptr(mustTime(t, "2026-06-12T09:00:00Z")),
+				Visibility: schedules.VisibilityPublic,
+				Source:     schedules.SourceEvent,
+				EventID:    &eventID,
+			},
+		},
+		summaries: map[int64]EventParticipationSummary{
+			eventID: {
+				EventID:    eventID,
+				ViewerRSVP: &rsvp,
+				GoingCount: 2,
+			},
+		},
+	}
+	service := NewService(reader)
+
+	items, err := service.Month(context.Background(), userID, mustTime(t, "2026-06-01T00:00:00Z"), mustTime(t, "2026-07-01T00:00:00Z"), "all")
+	if err != nil {
+		t.Fatalf("calendar month: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected dismissed event to stay in calendar feed, got %d items", len(items))
+	}
+	if items[0].EventID == nil || *items[0].EventID != eventID {
+		t.Fatalf("expected dismissed event item, got %+v", items[0])
+	}
+	if items[0].ViewerRSVP == nil || *items[0].ViewerRSVP != "not_going" {
+		t.Fatalf("expected viewer rsvp not_going, got %+v", items[0].ViewerRSVP)
 	}
 }
 
