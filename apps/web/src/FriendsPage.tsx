@@ -10,27 +10,36 @@ import {
   sendFriendRequest,
 } from './lib/friends'
 import type { Friend, FriendRequest, UserSearchResult } from './lib/friends'
+import { inviteToEvent, listMine } from './lib/events'
+import type { Event } from './lib/events'
 import { LoadingState } from './components/LoadingState'
 import { EmptyState } from './components/EmptyState'
 import { Avatar } from './components/Avatar'
+import { FriendInvitePicker } from './components/FriendInvitePicker'
 
 export default function FriendsPage() {
   const [friends, setFriends] = useState<Friend[]>([])
   const [requests, setRequests] = useState<FriendRequest[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserSearchResult[]>([])
+  const [events, setEvents] = useState<Event[]>([])
+  const [selectedEventID, setSelectedEventID] = useState('')
+  const [selectedInviteeIDs, setSelectedInviteeIDs] = useState<string[]>([])
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [loaded, setLoaded] = useState(false)
+  const [inviteSubmitting, setInviteSubmitting] = useState(false)
 
   async function refresh() {
     try {
-      const [friendList, requestList] = await Promise.all([
+      const [friendList, requestList, eventList] = await Promise.all([
         listFriends(),
         listFriendRequests(),
+        listMine(),
       ])
       setFriends(friendList)
       setRequests(requestList)
+      setEvents(eventList.filter((event) => event.status === 'active'))
       setError('')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '无法加载好友')
@@ -81,6 +90,40 @@ export default function FriendsPage() {
     await refresh()
   }
 
+  function toggleInvitee(friendID: string) {
+    setSelectedInviteeIDs((current) =>
+      current.includes(friendID)
+        ? current.filter((id) => id !== friendID)
+        : [...current, friendID],
+    )
+  }
+
+  async function handleInviteFriends() {
+    if (!selectedEventID) {
+      setError('请先选择一个活动')
+      return
+    }
+    if (selectedInviteeIDs.length === 0) {
+      setError('请至少选择一位好友')
+      return
+    }
+    setInviteSubmitting(true)
+    try {
+      const invited = await inviteToEvent(
+        Number(selectedEventID),
+        selectedInviteeIDs,
+      )
+      const count = invited.length || selectedInviteeIDs.length
+      setMessage(`已邀请 ${count} 位好友参加活动`)
+      setSelectedInviteeIDs([])
+      setError('')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : '邀请失败')
+    } finally {
+      setInviteSubmitting(false)
+    }
+  }
+
   const incoming = requests.filter((request) => request.direction === 'incoming')
   const outgoing = requests.filter((request) => request.direction === 'outgoing')
 
@@ -97,6 +140,55 @@ export default function FriendsPage() {
       {message ? (
         <p className="text-sm font-semibold text-grass">{message}</p>
       ) : null}
+
+      <section className="rounded-3xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
+              Bulk invite
+            </p>
+            <h2 className="mt-1 text-xl font-bold">邀请好友参加活动</h2>
+          </div>
+          <Link className="text-sm font-semibold text-brand" to="/events/new">
+            创建活动
+          </Link>
+        </div>
+
+        <label className="mt-4 block text-sm font-semibold text-ink">
+          选择活动
+          <select
+            className="mt-2 w-full rounded-2xl border border-hairline bg-surface px-4 py-3 text-ink outline-none transition-colors duration-200 focus:border-brand"
+            onChange={(event) => setSelectedEventID(event.target.value)}
+            value={selectedEventID}
+          >
+            <option value="">先选择一个活动</option>
+            {events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.title}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {loaded && events.length === 0 ? (
+          <p className="mt-3 text-sm font-semibold text-muted">
+            还没有可邀请的活动，先创建一个 Hangout。
+          </p>
+        ) : null}
+
+        <div className="mt-4">
+          <FriendInvitePicker
+            emptyDescription="还没有好友，先搜索昵称或邮箱添加好友。"
+            friends={friends}
+            loaded={loaded}
+            onSubmit={handleInviteFriends}
+            onToggle={toggleInvitee}
+            selectedIDs={selectedInviteeIDs}
+            submitLabel="发送活动邀请"
+            submitting={inviteSubmitting}
+          />
+        </div>
+      </section>
 
       <form className="flex gap-2" onSubmit={handleSearch}>
         <input

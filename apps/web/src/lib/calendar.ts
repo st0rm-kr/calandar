@@ -7,6 +7,20 @@ type ApiEnvelope<T> = {
 
 export type CalendarColor = 'blue' | 'green' | 'gray'
 
+export type CalendarSourceType =
+  | 'self_schedules'
+  | 'self_events'
+  | 'friend_schedules'
+  | 'group_events'
+
+export type CalendarSubscription = {
+  id: string
+  type: CalendarSourceType
+  label: string
+  color: CalendarColor
+  enabled: boolean
+}
+
 export type CalendarItem = {
   id: number
   kind: 'schedule' | 'event'
@@ -20,6 +34,10 @@ export type CalendarItem = {
   event_id: number | null
   viewer_rsvp: 'invited' | 'going' | 'not_going' | 'maybe' | null
   going_count: number
+  source_id: string
+  source_type: CalendarSourceType
+  source_label: string
+  source_color: CalendarColor
   participants_preview: Array<{
     id: string
     display_name: string
@@ -44,12 +62,29 @@ export async function getCalendar(
   from: string,
   to: string,
   filter: CalendarFilter = 'all',
+  sources?: string[],
 ): Promise<CalendarItem[]> {
-  const query = new URLSearchParams({ from, to, filter }).toString()
+  const query = new URLSearchParams({ from, to, filter })
+  if (sources) {
+    query.set('sources', sources.join(','))
+  }
   const response = await fetch(`/api/calendar?${query}`, {
     headers: await authHeaders(),
   })
   const body = (await response.json()) as ApiEnvelope<CalendarItem[]>
+  if (!response.ok || body.error) {
+    throw new Error(body.error?.message ?? `Request failed: ${response.status}`)
+  }
+  return body.data ?? []
+}
+
+export async function listCalendarSubscriptions(): Promise<
+  CalendarSubscription[]
+> {
+  const response = await fetch('/api/calendar/subscriptions', {
+    headers: await authHeaders(),
+  })
+  const body = (await response.json()) as ApiEnvelope<CalendarSubscription[]>
   if (!response.ok || body.error) {
     throw new Error(body.error?.message ?? `Request failed: ${response.status}`)
   }

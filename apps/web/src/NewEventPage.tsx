@@ -1,7 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { createEvent } from './lib/events'
+import { createEvent, inviteToEvent } from './lib/events'
+import { listFriends } from './lib/friends'
+import type { Friend } from './lib/friends'
+import { FriendInvitePicker } from './components/FriendInvitePicker'
 
 const eventTypes = [
   { value: 'climbing', label: '攀岩' },
@@ -27,8 +30,47 @@ export default function NewEventPage() {
   const [endAt, setEndAt] = useState('')
   const [location, setLocation] = useState('')
   const [capacity, setCapacity] = useState('')
+  const [friends, setFriends] = useState<Friend[]>([])
+  const [friendsLoaded, setFriendsLoaded] = useState(false)
+  const [selectedInviteeIDs, setSelectedInviteeIDs] = useState<string[]>([])
+  const [friendsError, setFriendsError] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    listFriends()
+      .then((friendList) => {
+        if (!active) {
+          return
+        }
+        setFriends(friendList)
+        setFriendsError('')
+      })
+      .catch((err: unknown) => {
+        if (!active) {
+          return
+        }
+        setFriends([])
+        setFriendsError(err instanceof Error ? err.message : '无法加载好友')
+      })
+      .finally(() => {
+        if (active) {
+          setFriendsLoaded(true)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  function toggleInvitee(friendID: string) {
+    setSelectedInviteeIDs((current) =>
+      current.includes(friendID)
+        ? current.filter((id) => id !== friendID)
+        : [...current, friendID],
+    )
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -46,6 +88,9 @@ export default function NewEventPage() {
         location: location.trim() || null,
         capacity: capacity ? Number(capacity) : null,
       })
+      if (selectedInviteeIDs.length > 0) {
+        await inviteToEvent(created.id, selectedInviteeIDs)
+      }
       navigate(`/events/${created.share_slug}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建活动失败')
@@ -147,6 +192,35 @@ export default function NewEventPage() {
             value={capacity}
           />
         </label>
+
+        <section className="rounded-3xl border border-white/10 bg-black/35 p-4 shadow-card backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand">
+                Optional
+              </p>
+              <h2 className="mt-1 text-lg font-bold">顺便邀请好友</h2>
+            </div>
+            <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-muted">
+              创建后发送
+            </span>
+          </div>
+          <p className="mt-2 text-sm font-semibold text-muted">
+            提交时会先创建活动，再向选中的好友发送邀请。
+          </p>
+          <div className="mt-4">
+            <FriendInvitePicker
+              emptyDescription="还没有好友，创建活动后可以先去好友页添加好友。"
+              error={friendsError}
+              friends={friends}
+              loaded={friendsLoaded}
+              onSubmit={() => undefined}
+              onToggle={toggleInvitee}
+              selectedIDs={selectedInviteeIDs}
+              showSubmitButton={false}
+            />
+          </div>
+        </section>
 
         {error ? (
           <p className="text-sm font-semibold text-rose">{error}</p>

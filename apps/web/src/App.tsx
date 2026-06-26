@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import CalendarPage from './CalendarPage'
 import EventDetailPage from './EventDetailPage'
@@ -13,10 +14,12 @@ import NotFoundPage from './NotFoundPage'
 import NotificationsPage from './NotificationsPage'
 import ProfilePage from './ProfilePage'
 import ScheduleEditorPage from './ScheduleEditorPage'
+import SchedulesPage from './SchedulesPage'
 import { AppShell } from './components/AppShell'
 import { RequireAuth } from './components/RequireAuth'
 import { useSession } from './hooks/useSession'
 import { getInbox } from './lib/inbox'
+import { subscribeInboxRefresh } from './lib/inboxRefresh'
 import { useAsync } from './hooks/useAsync'
 import './index.css'
 
@@ -32,6 +35,9 @@ function AuthedShell({
   showFab?: boolean
 }) {
   const inbox = useAsync(() => getInbox(), [session.session?.access_token])
+
+  useEffect(() => subscribeInboxRefresh(inbox.reload), [inbox.reload])
+
   return (
     <RequireAuth session={session}>
       <AppShell
@@ -55,7 +61,7 @@ export default function App() {
       <Route
         path="/"
         element={
-          <AuthedShell session={session} showFab>
+          <AuthedShell session={session}>
             <CalendarPage />
           </AuthedShell>
         }
@@ -63,7 +69,7 @@ export default function App() {
       <Route
         path="/calendar"
         element={
-          <AuthedShell session={session} showFab>
+          <AuthedShell session={session}>
             <CalendarPage />
           </AuthedShell>
         }
@@ -71,7 +77,7 @@ export default function App() {
       <Route
         path="/events"
         element={
-          <AuthedShell session={session} showFab>
+          <AuthedShell session={session}>
             <EventsPage />
           </AuthedShell>
         }
@@ -87,6 +93,14 @@ export default function App() {
       <Route
         path="/events/:slug"
         element={<EventDetailPage session={session} />}
+      />
+      <Route
+        path="/schedules"
+        element={
+          <AuthedShell session={session}>
+            <SchedulesPage />
+          </AuthedShell>
+        }
       />
       <Route
         path="/schedules/new"

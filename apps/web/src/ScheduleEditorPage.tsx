@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   checkConflicts,
   createSchedule,
+  getSchedule,
   updateSchedule,
 } from './lib/schedules'
 import type { ScheduleConflict, ScheduleVisibility } from './lib/schedules'
@@ -20,6 +21,15 @@ const visibilityOptions: Array<{
 
 function toISO(value: string): string {
   return new Date(value).toISOString()
+}
+
+function toDateTimeLocal(value: string | null): string {
+  if (!value) {
+    return ''
+  }
+  const date = new Date(value)
+  const pad = (input: number) => String(input).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 function formatConflict(conflict: ScheduleConflict): string {
@@ -42,7 +52,48 @@ export default function ScheduleEditorPage() {
   const [visibility, setVisibility] = useState<ScheduleVisibility>('busy_only')
   const [conflicts, setConflicts] = useState<ScheduleConflict[]>([])
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(Boolean(scheduleID))
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    if (!scheduleID) {
+      return () => {
+        active = false
+      }
+    }
+    Promise.resolve()
+      .then(async () => {
+        if (active) {
+          setLoading(true)
+        }
+        return getSchedule(scheduleID)
+      })
+      .then((schedule) => {
+        if (!active) {
+          return
+        }
+        setTitle(schedule.title)
+        setStartAt(toDateTimeLocal(schedule.start_at))
+        setEndAt(toDateTimeLocal(schedule.end_at))
+        setLocation(schedule.location ?? '')
+        setVisibility(schedule.visibility)
+        setError('')
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : '无法加载日程')
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [scheduleID])
 
   useEffect(() => {
     let active = true
@@ -112,6 +163,10 @@ export default function ScheduleEditorPage() {
       <h1 className="mt-4 text-2xl font-bold tracking-tight">
         {scheduleID ? '编辑日程' : '新建日程'}
       </h1>
+
+      {loading ? (
+        <p className="mt-6 text-sm font-semibold text-muted">正在加载日程...</p>
+      ) : null}
 
       <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
         <label className="block text-sm font-semibold text-ink">

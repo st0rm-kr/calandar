@@ -6,6 +6,24 @@ export type ApiEnvelope<T> = {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path)
+}
+
+export async function apiPatch<T>(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  return apiRequest<T>(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const headers: Record<string, string> = {}
   const {
     data: { session },
@@ -13,8 +31,11 @@ export async function apiGet<T>(path: string): Promise<T> {
   if (session) {
     headers.Authorization = `Bearer ${session.access_token}`
   }
+  for (const [key, value] of Object.entries(init.headers ?? {})) {
+    headers[key] = String(value)
+  }
 
-  const response = await fetch(path, { headers })
+  const response = await fetch(path, { ...init, headers })
   const body = (await response.json()) as ApiEnvelope<T>
   if (!response.ok || body.error) {
     throw new Error(body.error?.message ?? `Request failed: ${response.status}`)

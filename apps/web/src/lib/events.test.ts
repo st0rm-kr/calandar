@@ -4,6 +4,7 @@ import {
   cancelEvent,
   createEvent,
   getEventBySlug,
+  inviteToEvent,
   listMine,
   rsvpEvent,
 } from './events'
@@ -185,6 +186,35 @@ describe('events API', () => {
     await expect(listMine()).resolves.toEqual([])
     expect(fetch).toHaveBeenCalledWith('/api/events/mine', {
       headers: { Authorization: 'Bearer test-token' },
+    })
+  })
+
+  it('invites friends to an event', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: [
+            {
+              id: 1,
+              event_id: 12,
+              user_id: 'friend-1',
+              rsvp: 'invited',
+            },
+          ],
+          error: null,
+        }),
+      ),
+    )
+
+    await expect(inviteToEvent(12, ['friend-1'])).resolves.toHaveLength(1)
+    expect(fetch).toHaveBeenCalledWith('/api/events/12/invite', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ invitee_ids: ['friend-1'] }),
     })
   })
 })

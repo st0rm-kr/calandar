@@ -25,6 +25,10 @@ func ptr[T any](value T) *T {
 type fakeScheduleReader struct {
 	rows            []schedules.Schedule
 	participantRows []schedules.Schedule
+	friendRows      []FriendSchedule
+	groupRows       []GroupEvent
+	friends         []CalendarFriend
+	groups          []CalendarGroup
 	summaries       map[int64]EventParticipationSummary
 }
 
@@ -36,6 +40,22 @@ func (r fakeScheduleReader) ListParticipantEventsByRange(_ context.Context, _ uu
 	return r.participantRows, nil
 }
 
+func (r fakeScheduleReader) ListFriendSchedulesByRange(_ context.Context, _ uuid.UUID, _ time.Time, _ time.Time) ([]FriendSchedule, error) {
+	return r.friendRows, nil
+}
+
+func (r fakeScheduleReader) ListGroupEventsByRange(_ context.Context, _ uuid.UUID, _ time.Time, _ time.Time) ([]GroupEvent, error) {
+	return r.groupRows, nil
+}
+
+func (r fakeScheduleReader) ListCalendarFriends(_ context.Context, _ uuid.UUID) ([]CalendarFriend, error) {
+	return r.friends, nil
+}
+
+func (r fakeScheduleReader) ListCalendarGroups(_ context.Context, _ uuid.UUID) ([]CalendarGroup, error) {
+	return r.groups, nil
+}
+
 func (r fakeScheduleReader) ListEventParticipationSummaries(_ context.Context, _ uuid.UUID, eventIDs []int64) (map[int64]EventParticipationSummary, error) {
 	result := make(map[int64]EventParticipationSummary, len(eventIDs))
 	for _, id := range eventIDs {
@@ -44,6 +64,104 @@ func (r fakeScheduleReader) ListEventParticipationSummaries(_ context.Context, _
 		}
 	}
 	return result, nil
+}
+
+func TestCalendarSubscriptionsIncludeSelfFriendsAndGroups(t *testing.T) {
+	userID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	friendID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	reader := fakeScheduleReader{
+		friends: []CalendarFriend{
+			{UserID: friendID, DisplayName: "Alex"},
+		},
+		groups: []CalendarGroup{
+			{ID: 7, Name: "攀岩群"},
+		},
+	}
+	service := NewService(reader)
+
+	subscriptions, err := service.Subscriptions(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("calendar subscriptions: %v", err)
+	}
+
+	labels := map[string]string{}
+	for _, subscription := range subscriptions {
+		labels[subscription.ID] = subscription.Label
+	}
+	expected := map[string]string{
+		"self:schedules": "自身日程",
+		"self:events":    "自身活动",
+		"friend:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa:schedules": "Alex 日程",
+		"group:7:events": "攀岩群 活动",
+	}
+	for id, label := range expected {
+		if labels[id] != label {
+			t.Fatalf("expected subscription %s label %q, got labels %+v", id, label, labels)
+		}
+	}
+}
+
+func TestCalendarFiltersBySourceAndMasksFriendBusyOnly(t *testing.T) {
+	userID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	friendID := uuid.MustParse("aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa")
+	location := "秘密地点"
+	reader := fakeScheduleReader{
+		rows: []schedules.Schedule{
+			{
+				ID:         1,
+				UserID:     userID,
+				Title:      "Personal run",
+				StartAt:    mustTime(t, "2026-06-10T08:00:00Z"),
+				Visibility: schedules.VisibilityPublic,
+				Source:     schedules.SourceManual,
+			},
+		},
+		friendRows: []FriendSchedule{
+			{
+				Schedule: schedules.Schedule{
+					ID:         41,
+					UserID:     friendID,
+					Title:      "牙医",
+					StartAt:    mustTime(t, "2026-06-11T09:00:00Z"),
+					EndAt:      ptr(mustTime(t, "2026-06-11T10:00:00Z")),
+					Location:   &location,
+					Visibility: schedules.VisibilityBusyOnly,
+					Source:     schedules.SourceManual,
+				},
+				FriendID:   friendID,
+				FriendName: "Alex",
+			},
+		},
+	}
+	service := NewService(reader)
+
+	items, err := service.Month(
+		context.Background(),
+		userID,
+		mustTime(t, "2026-06-01T00:00:00Z"),
+		mustTime(t, "2026-07-01T00:00:00Z"),
+		"all",
+		[]string{"friend:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa:schedules"},
+	)
+	if err != nil {
+		t.Fatalf("calendar month: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected only selected friend schedule, got %d items: %+v", len(items), items)
+	}
+	item := items[0]
+	if item.Title != "忙碌" {
+		t.Fatalf("expected busy_only friend title to be masked, got %q", item.Title)
+	}
+	if item.Location != nil {
+		t.Fatalf("expected busy_only friend location to be hidden, got %q", *item.Location)
+	}
+	if item.SourceID != "friend:aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa:schedules" ||
+		item.SourceType != SourceTypeFriendSchedules ||
+		item.SourceLabel != "Alex 日程" ||
+		item.SourceColor != ColorGray {
+		t.Fatalf("expected friend source metadata, got %+v", item)
+	}
 }
 
 func TestCalendarIncludesManualAndEventSchedules(t *testing.T) {

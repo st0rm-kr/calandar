@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet } from './api'
+import { apiGet, apiPatch } from './api'
 import { supabase } from './supabase'
 
 vi.mock('./supabase', () => ({
@@ -65,6 +65,40 @@ describe('apiGet', () => {
 
     expect(fetch).toHaveBeenCalledWith('/api/health', {
       headers: { Authorization: 'Bearer test-token' },
+    })
+  })
+
+  it('patches JSON data with authenticated headers', async () => {
+    getSession.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'test-token',
+        },
+      },
+      error: null,
+    } as Awaited<ReturnType<typeof supabase.auth.getSession>>)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: { display_name: 'Lily Chen' },
+          error: null,
+        }),
+      ),
+    )
+
+    await expect(
+      apiPatch<{ display_name: string }>('/api/users/me', {
+        display_name: 'Lily Chen',
+      }),
+    ).resolves.toEqual({ display_name: 'Lily Chen' })
+    expect(fetch).toHaveBeenCalledWith('/api/users/me', {
+      method: 'PATCH',
+      headers: {
+        Authorization: 'Bearer test-token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ display_name: 'Lily Chen' }),
     })
   })
 

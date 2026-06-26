@@ -93,15 +93,17 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	authenticated.GET("/schedules", scheduleHandler.HandleList)
 	authenticated.POST("/schedules", scheduleHandler.HandleCreate)
 	authenticated.GET("/schedules/conflicts", scheduleHandler.HandleConflicts)
+	authenticated.GET("/schedules/:id", scheduleHandler.HandleGet)
 	authenticated.PATCH("/schedules/:id", scheduleHandler.HandleUpdate)
 	authenticated.DELETE("/schedules/:id", scheduleHandler.HandleDelete)
 
 	calendarService := deps.CalendarService
 	if calendarService == nil {
-		calendarService = calendar.NewService(schedules.NewRepository(deps.DB))
+		calendarService = calendar.NewService(calendar.NewRepository(deps.DB))
 	}
 	calendarHandler := calendar.NewHandler(calendarService)
 	authenticated.GET("/calendar", calendarHandler.HandleMonth)
+	authenticated.GET("/calendar/subscriptions", calendarHandler.HandleSubscriptions)
 
 	friendHandler := friends.NewHandler(friendService)
 	authenticated.GET("/friends", friendHandler.HandleList)

@@ -44,6 +44,21 @@ const tabs: Tab[] = [
     ),
   },
   {
+    to: '/schedules',
+    label: '日程',
+    match: (path) => path.startsWith('/schedule'),
+    icon: (
+      <svg {...iconProps}>
+        <path
+          d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M8 9h8M8 13h5M8 17h6" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     to: '/inbox',
     label: '收件箱',
     match: (path) => path.startsWith('/inbox'),
@@ -115,7 +130,10 @@ export function BottomTabs({ inboxCount = 0 }: BottomTabsProps) {
               {tab.icon}
               <span>{tab.label}</span>
               {tab.to === '/inbox' && inboxCount > 0 ? (
-                <span className="absolute right-2 top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose px-1 text-[10px] font-bold text-white">
+                <span
+                  aria-label={`收件箱未读 ${inboxCount > 99 ? '99+' : inboxCount}`}
+                  className="absolute right-2 top-2 inline-flex min-w-4 items-center justify-center rounded-full bg-rose px-1 text-[10px] font-bold text-white"
+                >
                   {inboxCount > 99 ? '99+' : inboxCount}
                 </span>
               ) : null}

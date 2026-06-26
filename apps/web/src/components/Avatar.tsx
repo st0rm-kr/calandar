@@ -39,6 +39,7 @@ export type AvatarProps = {
   size?: AvatarSize
   className?: string
   ring?: boolean
+  decorative?: boolean
 }
 
 export function Avatar({
@@ -48,23 +49,33 @@ export function Avatar({
   size = 'md',
   className = '',
   ring = false,
+  decorative = false,
 }: AvatarProps) {
   const ringClass = ring ? 'ring-2 ring-surface' : ''
   if (src) {
     return (
       <img
-        alt={name}
+        alt={decorative ? '' : name}
+        aria-hidden={decorative ? true : undefined}
         className={`${sizeClass[size]} ${ringClass} rounded-full object-cover ${className}`}
         src={src}
       />
     )
   }
   const color = palette[hashString(seed ?? name) % palette.length]
+  const textAvatarClassName = [
+    sizeClass[size],
+    color,
+    ringClass,
+    'inline-flex items-center justify-center rounded-full font-display font-semibold',
+    className,
+  ].join(' ')
   return (
     <span
-      aria-label={name}
-      className={`${sizeClass[size]} ${color} ${ringClass} inline-flex items-center justify-center rounded-full font-display font-semibold ${className}`}
-      role="img"
+      aria-hidden={decorative ? true : undefined}
+      aria-label={decorative ? undefined : name}
+      className={textAvatarClassName}
+      role={decorative ? undefined : 'img'}
     >
       {initialOf(name)}
     </span>

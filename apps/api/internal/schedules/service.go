@@ -68,6 +68,17 @@ func (s *Service) ListByRange(ctx context.Context, userID uuid.UUID, from, to ti
 	return s.repo.ListByRange(ctx, userID, from.UTC(), to.UTC())
 }
 
+func (s *Service) GetManual(ctx context.Context, userID uuid.UUID, scheduleID int64) (Schedule, error) {
+	schedule, err := s.repo.FindByID(ctx, userID, scheduleID)
+	if err != nil {
+		return Schedule{}, err
+	}
+	if schedule.Source != SourceManual {
+		return Schedule{}, ErrCannotModifyEventSchedule
+	}
+	return schedule, nil
+}
+
 func (s *Service) CreateManual(ctx context.Context, userID uuid.UUID, input CreateManualInput) (ScheduleResult, error) {
 	title, err := normalizeTitle(input.Title)
 	if err != nil {

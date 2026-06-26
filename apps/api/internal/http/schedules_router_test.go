@@ -90,6 +90,41 @@ func TestSchedulesConflictsExcludeIDRemovesEditedSchedule(t *testing.T) {
 	}
 }
 
+func TestSchedulesGetReturnsManualSchedule(t *testing.T) {
+	userID := uuid.MustParse("d3f7e3f1-b2a9-46f0-9a4b-41a198e624c8")
+	repo := newFakeScheduleRepo()
+	seeded := repo.seed(schedules.Schedule{
+		UserID:     userID,
+		Title:      "Focus",
+		StartAt:    mustParse(t, "2026-06-24T09:00:00Z"),
+		Visibility: schedules.VisibilityBusyOnly,
+		Source:     schedules.SourceManual,
+	})
+	router := NewRouter(Dependencies{
+		Config:          configWithJWTSecret(),
+		ScheduleService: schedules.NewService(repo),
+	})
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/api/schedules/"+itoa(seeded.ID), nil)
+	req.Header.Set("Authorization", "Bearer "+signHS256JWT(t, userID))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data  schedules.Schedule `json:"data"`
+		Error any                `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v; body: %s", err, rec.Body.String())
+	}
+	if body.Data.ID != seeded.ID || body.Data.Title != "Focus" {
+		t.Fatalf("unexpected schedule: %+v", body.Data)
+	}
+}
+
 func doConflicts(t *testing.T, router *gin.Engine, userID uuid.UUID, query string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(nethttp.MethodGet, "/api/schedules/conflicts?"+query, nil)

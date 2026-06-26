@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getInbox } from './lib/inbox'
 import type { InboxItem, InboxResult } from './lib/inbox'
+import { emitInboxRefresh } from './lib/inboxRefresh'
 import { acceptFriendRequest, rejectFriendRequest } from './lib/friends'
 import { acceptGroupInvite, rejectGroupInvite } from './lib/groups'
 import { rsvpEvent } from './lib/events'
@@ -41,10 +42,15 @@ export default function InboxPage() {
     void Promise.resolve().then(() => refresh())
   }, [])
 
+  async function refreshAfterAction() {
+    await refresh()
+    emitInboxRefresh()
+  }
+
   async function handleRSVP(eventID: number, rsvp: EventRSVP) {
     try {
       await rsvpEvent(eventID, { rsvp, add_to_calendar: addToCalendar, visibility })
-      await refresh()
+      await refreshAfterAction()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '操作失败')
     }
@@ -57,7 +63,7 @@ export default function InboxPage() {
       } else {
         await rejectFriendRequest(requestID)
       }
-      await refresh()
+      await refreshAfterAction()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '操作失败')
     }
@@ -70,7 +76,7 @@ export default function InboxPage() {
       } else {
         await rejectGroupInvite(inviteID)
       }
-      await refresh()
+      await refreshAfterAction()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : '操作失败')
     }

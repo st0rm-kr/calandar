@@ -4,6 +4,7 @@ import {
   checkConflicts,
   createSchedule,
   deleteSchedule,
+  getSchedule,
   listSchedules,
   updateSchedule,
 } from './schedules'
@@ -100,6 +101,32 @@ describe('schedules API', () => {
         location: null,
         visibility: 'busy_only',
       }),
+    })
+  })
+
+  it('loads a single schedule with auth header', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          data: {
+            id: 5,
+            title: 'Focus',
+            start_at: '2026-06-24T09:00:00Z',
+            end_at: null,
+            location: null,
+            visibility: 'busy_only',
+            source: 'manual',
+            event_id: null,
+          },
+          error: null,
+        }),
+      ),
+    )
+
+    await expect(getSchedule(5)).resolves.toMatchObject({ id: 5 })
+    expect(fetch).toHaveBeenCalledWith('/api/schedules/5', {
+      headers: { Authorization: 'Bearer test-token' },
     })
   })
 

@@ -47,6 +47,25 @@ func (h *Handler) HandleList(c *gin.Context) {
 	respondOK(c, http.StatusOK, list)
 }
 
+func (h *Handler) HandleGet(c *gin.Context) {
+	userID, ok := auth.UserIDFromContext(c.Request.Context())
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized", "missing authenticated user")
+		return
+	}
+	scheduleID, ok := parseScheduleID(c)
+	if !ok {
+		return
+	}
+
+	schedule, err := h.service.GetManual(c.Request.Context(), userID, scheduleID)
+	if err != nil {
+		h.respondServiceError(c, err)
+		return
+	}
+	respondOK(c, http.StatusOK, schedule)
+}
+
 func (h *Handler) HandleCreate(c *gin.Context) {
 	userID, ok := auth.UserIDFromContext(c.Request.Context())
 	if !ok {

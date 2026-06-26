@@ -79,6 +79,12 @@ export async function listSchedules(
   })
 }
 
+export async function getSchedule(scheduleID: number): Promise<Schedule> {
+  return apiRequest<Schedule>(`/api/schedules/${scheduleID}`, {
+    headers: await authHeaders(),
+  })
+}
+
 export async function createSchedule(
   input: ScheduleInput,
 ): Promise<ScheduleResult> {

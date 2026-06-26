@@ -69,6 +69,16 @@ export type RSVPResult = {
   going_count: number
 }
 
+export type EventParticipant = {
+  id: number
+  event_id: number
+  user_id: string
+  rsvp: EventRSVP
+  add_to_calendar?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 async function authHeaders(hasBody = false): Promise<Record<string, string>> {
   const headers: Record<string, string> = {}
   const {
@@ -120,6 +130,17 @@ export async function rsvpEvent(
     method: 'POST',
     headers: await authHeaders(true),
     body: JSON.stringify(input),
+  })
+}
+
+export async function inviteToEvent(
+  eventID: number,
+  inviteeIDs: string[],
+): Promise<EventParticipant[]> {
+  return apiRequest<EventParticipant[]>(`/api/events/${eventID}/invite`, {
+    method: 'POST',
+    headers: await authHeaders(true),
+    body: JSON.stringify({ invitee_ids: inviteeIDs }),
   })
 }
 

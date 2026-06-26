@@ -52,6 +52,15 @@
   .timeline-reveal > *:nth-child(3) {
     animation-delay: 90ms;
   }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes timeline-reveal {
